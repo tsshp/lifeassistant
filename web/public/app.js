@@ -2,6 +2,7 @@ import { fileStore } from "./db.js";
 
 const app = document.querySelector("#app");
 const dialog = document.querySelector("#entry-dialog");
+const itemActionsDialog = document.querySelector("#item-actions-dialog");
 const restoreInput = document.querySelector("#restore-input");
 const state = { tripId: null, tripSearch: "", search: "", unfulfilledOnly: false, tagId: "", storeTypeTagId: "", categoryTagId: "", storeId: "", pendingReceipts: false, receiptFilterType: "", showArchived: false, columns: 2, sort: "activity", sortDirection: "desc" };
 function reportError(error) {
@@ -66,7 +67,7 @@ async function rememberFilter(data, tripId, resultCount) {
 }
 
 function renderHeader(title, action = "") {
-  return `<header class="topbar"><button class="brand" data-action="home" aria-label="All trips"><span class="brand-mark">▲</span><span>riceball</span></button><div class="topbar-title">${title}</div>${action}</header>`;
+  return `<header class="topbar"><button class="brand" data-action="home" aria-label="All trips"><span class="brand-mark">▲</span><span>riceball</span></button><div class="topbar-title">${title}</div><details class="top-actions"><summary>Actions</summary><div class="top-action-list">${action}</div></details></header>`;
 }
 
 async function render() {
@@ -132,6 +133,8 @@ function renderTrip(data, trip) {
     <section class="management-section"><div class="section-heading"><h2>Stores</h2><button class="text-button" data-action="new-store">Add store</button></div>${tripStores.length ? tripStores.map((store) => `<article class="management-row"><span><strong>${escapeHtml(store.name)}</strong><small>${escapeHtml(store.notes ?? "")}</small></span><button class="text-button" data-edit-store="${store.id}">Edit</button><button class="delete-button" data-delete-store="${store.id}">Delete</button></article>`).join("") : '<p class="muted">No stores saved for this trip.</p>'}</section>
     <section class="management-section"><div class="section-heading"><h2>Tags</h2><button class="text-button" data-action="new-tag">Add tag</button></div>${tripTags.length ? tripTags.map((tag) => `<article class="management-row"><span><strong>${escapeHtml(tag.name)}</strong><small>${escapeHtml(tag.kind)}</small></span><button class="text-button" data-edit-tag="${tag.id}">Edit</button><button class="delete-button" data-delete-tag="${tag.id}">Delete</button></article>`).join("") : '<p class="muted">No tags saved for this trip.</p>'}</section>
     <section class="management-section"><div class="section-heading"><h2>Purchase types</h2><button class="text-button" data-action="new-purchase-type">Add type</button></div>${tripPurchaseTypes.length ? tripPurchaseTypes.map((type) => `<article class="management-row"><span><strong>${escapeHtml(type.name)}</strong></span><button class="text-button" data-edit-purchase-type="${type.id}">Edit</button><button class="delete-button" data-delete-purchase-type="${type.id}">Delete</button></article>`).join("") : '<p class="muted">No purchase types saved for this trip.</p>'}</section>`;
+  const controls = app.querySelector(".controls");
+  if (controls) { const filterPanel = document.createElement("details"); filterPanel.className = "filter-panel"; filterPanel.innerHTML = "<summary>Filters</summary>"; controls.parentNode.insertBefore(filterPanel, controls); filterPanel.append(controls); }
   const columnSelect = app.querySelector("[data-columns]");
   if (columnSelect) columnSelect.insertAdjacentHTML("beforeend", `<option value="4" ${state.columns === 4 ? "selected" : ""}>4 columns</option><option value="5" ${state.columns === 5 ? "selected" : ""}>5 columns</option>`);
   decoratePhotos();
@@ -146,13 +149,18 @@ function itemCard(item, purchases, data) {
   const photoPaths = item.photoPaths ?? (item.photoPath ? [item.photoPath] : []);
   const photos = photoPaths.length ? `<div class="photo-gallery">${photoPaths.map((path) => `<img class="item-photo" data-photo="${escapeHtml(path)}" alt="">`).join("")}</div>` : `<div class="item-art"><span>${escapeHtml(item.name.slice(0, 1).toUpperCase())}</span></div>`;
   const statusText = progress.complete ? `Complete · ${progress.bought}/${item.desiredQuantity}${progress.bought > item.desiredQuantity ? ` · Overage ${progress.bought - item.desiredQuantity}` : ""}` : `${progress.remaining} remaining · ${progress.bought}/${item.desiredQuantity}`;
-  return `<article class="item-card">${photos}<div class="item-content"><h3>${escapeHtml(item.name)}</h3><p>${statusText}</p><div class="progress"><span style="width:${percent}%"></span></div>${state.showArchived ? "" : `<div class="stepper"><button data-decrement="${item.id}" aria-label="Decrease ${escapeHtml(item.name)}">−</button><strong>${progress.bought}</strong><button data-increment="${item.id}" aria-label="Increase ${escapeHtml(item.name)}">+</button></div>`}${history.map((purchase) => `<div class="purchase-line"><span>${purchase.quantity} purchased${purchase.totalMinor == null ? "" : ` · ${formatMoney(purchase.totalMinor, data.trips.find((trip) => trip.id === item.tripId)?.currency ?? "USD")}`}</span><button class="text-button" data-edit-purchase="${purchase.id}">Edit</button><button class="delete-button" data-delete-purchase="${purchase.id}">Delete</button></div>`).join("")}${sightings.map((sighting) => `<div class="purchase-line"><span>Price ${formatMoney(sighting.packagePriceMinor, data.trips.find((trip) => trip.id === item.tripId)?.currency ?? "USD")} / ${sighting.packageQuantity} = ${formatMoney(sighting.comparableMinor, data.trips.find((trip) => trip.id === item.tripId)?.currency ?? "USD")} each</span><button class="text-button" data-edit-sighting="${sighting.id}">Edit</button><button class="delete-button" data-delete-sighting="${sighting.id}">Delete</button></div>`).join("")}${state.showArchived ? "" : `<button class="text-button" data-new-purchase="${item.id}">Add purchase detail</button><button class="text-button" data-new-sighting="${item.id}">Add price sighting</button><button class="text-button" data-edit-item="${item.id}">Edit item</button>`}${lifecycle}</div></article>`;
+  return `<article class="item-card" data-long-press-item="${item.id}">${photos}<div class="item-content"><h3>${escapeHtml(item.name)}</h3><p class="item-status">${statusText}</p>${state.showArchived ? "" : `<div class="stepper"><button data-decrement="${item.id}" aria-label="Decrease ${escapeHtml(item.name)}">−</button><strong>${progress.bought}</strong><button data-increment="${item.id}" aria-label="Increase ${escapeHtml(item.name)}">+</button></div>`}${history.map((purchase) => `<div class="purchase-line"><span>${purchase.quantity} purchased${purchase.totalMinor == null ? "" : ` · ${formatMoney(purchase.totalMinor, data.trips.find((trip) => trip.id === item.tripId)?.currency ?? "USD")}`}</span><button class="text-button" data-edit-purchase="${purchase.id}">Edit</button><button class="delete-button" data-delete-purchase="${purchase.id}">Delete</button></div>`).join("")}${sightings.map((sighting) => `<div class="purchase-line"><span>Price ${formatMoney(sighting.packagePriceMinor, data.trips.find((trip) => trip.id === item.tripId)?.currency ?? "USD")} / ${sighting.packageQuantity} = ${formatMoney(sighting.comparableMinor, data.trips.find((trip) => trip.id === item.tripId)?.currency ?? "USD")} each</span><button class="text-button" data-edit-sighting="${sighting.id}">Edit</button><button class="delete-button" data-delete-sighting="${sighting.id}">Delete</button></div>`).join("")}${lifecycle}</div></article>`;
 }
 
 async function decoratePhotos() {
   for (const image of app.querySelectorAll("[data-photo]")) {
     try { image.src = await fileStore.photoUrl(image.dataset.photo); } catch { image.remove(); }
   }
+}
+
+function openItemActions(itemId) {
+  itemActionsDialog.innerHTML = `<div class="action-menu"><h2>Item actions</h2><button data-item-action="purchase" data-item-id="${itemId}">Add purchase detail</button><button data-item-action="sighting" data-item-id="${itemId}">Add price sighting</button><button data-item-action="edit" data-item-id="${itemId}">Edit item</button><button data-item-action="archive" data-item-id="${itemId}">Archive item</button><button data-item-action="cancel">Cancel</button></div>`;
+  itemActionsDialog.showModal();
 }
 
 function openForm(kind, item = null) {
@@ -660,6 +668,34 @@ app.addEventListener("click", async (event) => {
 });
 
 let searchTimer;
+let longPressTimer;
+app.addEventListener("pointerdown", (event) => {
+  const card = event.target.closest("[data-long-press-item]");
+  if (!card || event.target.closest("button, input, select, textarea, a")) return;
+  longPressTimer = window.setTimeout(() => openItemActions(card.dataset.longPressItem), 550);
+});
+for (const eventName of ["pointerup", "pointercancel", "pointerleave"]) app.addEventListener(eventName, () => { window.clearTimeout(longPressTimer); });
+app.addEventListener("contextmenu", (event) => {
+  const card = event.target.closest("[data-long-press-item]");
+  if (!card || event.target.closest("button, input, select, textarea, a")) return;
+  event.preventDefault();
+  openItemActions(card.dataset.longPressItem);
+});
+itemActionsDialog.addEventListener("click", async (event) => {
+  const target = event.target.closest("[data-item-action]");
+  if (!target) return;
+  const action = target.dataset.itemAction;
+  const itemId = target.dataset.itemId;
+  itemActionsDialog.close();
+  if (action === "cancel") return;
+  const data = await load();
+  const item = data.items.find((candidate) => candidate.id === itemId);
+  if (!item) return;
+  if (action === "edit") return openForm("item", item);
+  if (action === "purchase") return openForm("purchase", { itemId });
+  if (action === "sighting") return openForm("sighting", { itemId });
+  if (action === "archive" && window.confirm("Archive this item?")) { item.status = "archived"; item.updatedAt = timestamp(); const removedPurchaseIds = new Set(data.purchases.filter((purchase) => purchase.itemId === item.id).map((purchase) => purchase.id)); data.purchases = data.purchases.filter((purchase) => !removedPurchaseIds.has(purchase.id)); for (const receipt of data.receipts) receipt.purchaseIds = (receipt.purchaseIds ?? []).filter((id) => !removedPurchaseIds.has(id)); await fileStore.save(data); render(); }
+});
 app.addEventListener("input", (event) => {
   if (event.target.matches("[data-trip-search]")) { state.tripSearch = event.target.value; render(); return; }
   if (!event.target.matches("[data-search]")) return;
