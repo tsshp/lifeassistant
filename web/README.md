@@ -16,11 +16,8 @@ For GitHub Pages deployment and backup instructions, read [the project run guide
 
 - Trips with a per-trip currency
 - Wanted-item quantities with quick purchase steppers
-- Search, unfulfilled filtering, and one-to-three-column item grid
-- Receipt totals and pending receipt count
-- JSON and photo persistence outside browser storage
-
-## Deliberate Next Steps
-
-- Add image capture/import improvements, crop/reorder flows, and receipt-photo display
-- Add tags, stores, purchase metadata, receipt splits, archive flows, and richer backup/export controls
+- Trip search, item search, unfulfilled filtering, tag/store filters, recent filters, sorting, and one-to-three-column item grid
+- Full item, purchase, receipt, store, tag, and purchase-type create/edit/archive/delete workflows
+- Quick purchases, purchase history, receipt-to-purchase links, pending receipts, split summaries, and mismatch warnings
+- Camera/multi-image capture, square photo normalization, draft review, photo reorder, and rotation
+- JSON export/restore plus folder backup, with durable JSON and photo persistence outside browser storage
