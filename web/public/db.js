@@ -33,7 +33,7 @@ export const fileStore = {
   supported: "showDirectoryPicker" in window,
   hasFolder: () => folderHandle !== null,
   chooseFolder: async () => {
-    if (!("showDirectoryPicker" in window)) throw new Error("This browser does not support folder access. Use Chrome on Android.");
+    if (!("showDirectoryPicker" in window)) throw new Error("This browser does not support folder access. Use Chrome or Edge on Android/desktop.");
     folderHandle = await window.showDirectoryPicker({ mode: "readwrite" });
     if (!(await ensurePermission())) throw new Error("Read/write permission was not granted for the selected folder");
     await readData();

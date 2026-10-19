@@ -3,6 +3,11 @@ import { fileStore } from "./db.js";
 const app = document.querySelector("#app");
 const dialog = document.querySelector("#entry-dialog");
 const state = { tripId: null, search: "", unfulfilledOnly: false, columns: 2, sort: "activity" };
+function reportError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  window.alert(`Riceball could not complete that action.\n\n${message}`);
+  console.error(error);
+}
 async function load() {
   return fileStore.load();
 }
@@ -123,9 +128,11 @@ app.addEventListener("click", async (event) => {
   const target = event.target.closest("[data-action], [data-open-trip], [data-increment], [data-decrement]");
   if (!target) return;
   if (target.dataset.action === "choose-folder") {
-    await fileStore.chooseFolder();
-    state.tripId = null;
-    render();
+    try {
+      await fileStore.chooseFolder();
+      state.tripId = null;
+      render();
+    } catch (error) { reportError(error); }
     return;
   }
   if (target.dataset.openTrip) { state.tripId = target.dataset.openTrip; render(); return; }
@@ -141,8 +148,10 @@ app.addEventListener("click", async (event) => {
     if (existing && existing.quantity + delta > 0) existing.quantity += delta;
     else if (existing) data.purchases.splice(data.purchases.indexOf(existing), 1);
     else if (delta > 0) data.purchases.push({ id: identifier(), itemId, quantity: 1, quick: true, createdAt: timestamp(), updatedAt: timestamp() });
-    await fileStore.save(data);
-    render();
+    try {
+      await fileStore.save(data);
+      render();
+    } catch (error) { reportError(error); }
   }
 });
 
@@ -153,7 +162,7 @@ app.addEventListener("change", (event) => {
   if (event.target.matches("[data-columns]")) state.columns = Number(event.target.value);
   render();
 });
-dialog.addEventListener("submit", (event) => { event.preventDefault(); saveForm(event.target); });
+dialog.addEventListener("submit", (event) => { event.preventDefault(); saveForm(event.target).catch(reportError); });
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js");
 render();
