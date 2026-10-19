@@ -1,0 +1,17 @@
+{
+  "name": "Riceball",
+  "short_name": "Riceball",
+  "description": "Offline vacation shopping companion",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#fff8ed",
+  "theme_color": "#e75a32",
+  "icons": [
+    {
+      "src": "./icons/riceball.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

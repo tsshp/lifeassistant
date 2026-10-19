@@ -1,0 +1,12 @@
+*.iml
+.gradle
+.idea
+build
+local.properties
+captures
+*.keystore
+*.jks
+/.cxx
+/.externalNativeBuild
+/.kotlin
+web/data/
