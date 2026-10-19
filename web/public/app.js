@@ -72,7 +72,7 @@ function renderTrip(data, trip) {
 function itemCard(item, purchases) {
   const progress = fulfillment(item, purchases);
   const percent = Math.min(100, Math.round((progress.bought / item.desiredQuantity) * 100));
-  return `<article class="item-card">${item.photoPath ? `<img class="item-photo" data-photo="${escapeHtml(item.photoPath)}" alt="">` : `<div class="item-art"><span>${escapeHtml(item.name.slice(0, 1).toUpperCase())}</span></div>`}<div class="item-content"><h3>${escapeHtml(item.name)}</h3><p>${progress.complete ? `Complete · ${progress.bought}/${item.desiredQuantity}` : `${progress.remaining} remaining · ${progress.bought}/${item.desiredQuantity}`}</p><div class="progress"><span style="width:${percent}%"></span></div><div class="stepper"><button data-decrement="${item.id}" aria-label="Decrease ${escapeHtml(item.name)}">−</button><strong>${progress.bought}</strong><button data-increment="${item.id}" aria-label="Increase ${escapeHtml(item.name)}">+</button></div></div></article>`;
+  return `<article class="item-card">${item.photoPath ? `<img class="item-photo" data-photo="${escapeHtml(item.photoPath)}" alt="">` : `<div class="item-art"><span>${escapeHtml(item.name.slice(0, 1).toUpperCase())}</span></div>`}<div class="item-content"><h3>${escapeHtml(item.name)}</h3><p>${progress.complete ? `Complete · ${progress.bought}/${item.desiredQuantity}` : `${progress.remaining} remaining · ${progress.bought}/${item.desiredQuantity}`}</p><div class="progress"><span style="width:${percent}%"></span></div><div class="stepper"><button data-decrement="${item.id}" aria-label="Decrease ${escapeHtml(item.name)}">−</button><strong>${progress.bought}</strong><button data-increment="${item.id}" aria-label="Increase ${escapeHtml(item.name)}">+</button></div><button class="text-button" data-edit-item="${item.id}">Edit item</button><button class="delete-button" data-delete-item="${item.id}">Delete item</button></div></article>`;
 }
 
 async function decoratePhotos() {
@@ -81,11 +81,11 @@ async function decoratePhotos() {
   }
 }
 
-function openForm(kind) {
+function openForm(kind, item = null) {
   const forms = {
-    trip: `<form method="dialog" data-form="trip"><h2>New trip</h2><label>Trip name<input name="name" required autofocus placeholder="Tokyo spring"></label><label>Currency<input name="currency" required value="USD" maxlength="3" autocapitalize="characters"></label><menu><button value="cancel">Cancel</button><button class="button button-primary" value="default">Create trip</button></menu></form>`,
-    item: `<form method="dialog" data-form="item"><h2>Add wanted item</h2><label>Name<input name="name" required autofocus placeholder="Matcha snacks"></label><label>Desired quantity<input name="quantity" type="number" min="1" value="10" required></label><label>Photo <span class="optional">optional</span><input name="photo" type="file" accept="image/*"></label><menu><button value="cancel">Cancel</button><button class="button button-primary" value="default">Add item</button></menu></form>`,
-    receipt: `<form method="dialog" data-form="receipt"><h2>Add receipt</h2><label>Total <span class="optional">optional</span><input name="total" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00"></label><label>Photo <span class="optional">optional</span><input name="photo" type="file" accept="image/*"></label><menu><button value="cancel">Cancel</button><button class="button button-primary" value="default">Save receipt</button></menu></form>`
+    trip: `<form method="dialog" data-form="trip"><h2>New trip</h2><label>Trip name<input name="name" required autofocus placeholder="Tokyo spring"></label><label>Currency<input name="currency" required value="USD" maxlength="3" autocapitalize="characters"></label><menu><button type="button" data-action="cancel-dialog">Cancel</button><button class="button button-primary" type="submit">Create trip</button></menu></form>`,
+    item: `<form method="dialog" data-form="item" data-item-id="${item?.id ?? ""}"><h2>${item ? "Edit item" : "Add wanted item"}</h2><label>Name<input name="name" required autofocus placeholder="Matcha snacks" value="${escapeHtml(item?.name ?? "")}"></label><label>Desired quantity<input name="quantity" type="number" min="1" value="${item?.desiredQuantity ?? 10}" required></label><label>Photo <span class="optional">optional</span><input name="photo" type="file" accept="image/*"></label><menu><button type="button" data-action="cancel-dialog">Cancel</button><button class="button button-primary" type="submit">${item ? "Save item" : "Add item"}</button></menu></form>`,
+    receipt: `<form method="dialog" data-form="receipt"><h2>Add receipt</h2><label>Total <span class="optional">optional</span><input name="total" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00"></label><label>Photo <span class="optional">optional</span><input name="photo" type="file" accept="image/*"></label><menu><button type="button" data-action="cancel-dialog">Cancel</button><button class="button button-primary" type="submit">Save receipt</button></menu></form>`
   };
   dialog.innerHTML = forms[kind];
   dialog.showModal();
@@ -105,10 +105,15 @@ async function saveForm(form) {
   }
   if (type === "item") {
     const createdAt = timestamp();
-    const item = { id: identifier(), tripId: state.tripId, name: values.get("name").trim(), desiredQuantity: Number(values.get("quantity")), status: "active", createdAt, updatedAt: createdAt };
+    const itemId = form.dataset.itemId;
+    const item = itemId ? data.items.find((candidate) => candidate.id === itemId) : { id: identifier(), tripId: state.tripId, status: "active", createdAt };
+    if (!item) throw new Error("The item no longer exists");
+    item.name = values.get("name").trim();
+    item.desiredQuantity = Number(values.get("quantity"));
+    item.updatedAt = createdAt;
     const photo = values.get("photo");
     if (photo?.size) item.photoPath = await fileStore.savePhoto(photo, item.id);
-    data.items.push(item);
+    if (!itemId) data.items.push(item);
     await fileStore.save(data);
   }
   if (type === "receipt") {
@@ -125,7 +130,7 @@ async function saveForm(form) {
 }
 
 app.addEventListener("click", async (event) => {
-  const target = event.target.closest("[data-action], [data-open-trip], [data-increment], [data-decrement]");
+  const target = event.target.closest("[data-action], [data-open-trip], [data-increment], [data-decrement], [data-delete-item], [data-edit-item]");
   if (!target) return;
   if (target.dataset.action === "choose-folder") {
     try {
@@ -140,15 +145,33 @@ app.addEventListener("click", async (event) => {
   if (target.dataset.action === "new-trip") return openForm("trip");
   if (target.dataset.action === "new-item") return openForm("item");
   if (target.dataset.action === "new-receipt") return openForm("receipt");
+  if (target.dataset.deleteItem) {
+    if (!window.confirm("Delete this item from the shopping list?")) return;
+    const data = await load();
+    const item = data.items.find((candidate) => candidate.id === target.dataset.deleteItem);
+    if (!item) return;
+    item.status = "archived";
+    item.updatedAt = timestamp();
+    data.purchases = data.purchases.filter((purchase) => purchase.itemId !== item.id);
+    await fileStore.save(data);
+    render();
+    return;
+  }
+  if (target.dataset.editItem) {
+    const data = await load();
+    const item = data.items.find((candidate) => candidate.id === target.dataset.editItem);
+    if (item) openForm("item", item);
+    return;
+  }
   const itemId = target.dataset.increment ?? target.dataset.decrement;
   if (itemId) {
-    const data = await load();
-    const delta = target.dataset.increment ? 1 : -1;
-    const existing = data.purchases.find((purchase) => purchase.itemId === itemId && purchase.quick === true);
-    if (existing && existing.quantity + delta > 0) existing.quantity += delta;
-    else if (existing) data.purchases.splice(data.purchases.indexOf(existing), 1);
-    else if (delta > 0) data.purchases.push({ id: identifier(), itemId, quantity: 1, quick: true, createdAt: timestamp(), updatedAt: timestamp() });
     try {
+      const data = await load();
+      const delta = target.dataset.increment ? 1 : -1;
+      const existing = data.purchases.find((purchase) => purchase.itemId === itemId && purchase.quick === true);
+      if (existing && existing.quantity + delta > 0) existing.quantity += delta;
+      else if (existing) data.purchases.splice(data.purchases.indexOf(existing), 1);
+      else if (delta > 0) data.purchases.push({ id: identifier(), itemId, quantity: 1, quick: true, createdAt: timestamp(), updatedAt: timestamp() });
       await fileStore.save(data);
       render();
     } catch (error) { reportError(error); }
@@ -163,6 +186,9 @@ app.addEventListener("change", (event) => {
   render();
 });
 dialog.addEventListener("submit", (event) => { event.preventDefault(); saveForm(event.target).catch(reportError); });
+dialog.addEventListener("click", (event) => {
+  if (event.target.closest('[data-action="cancel-dialog"]')) dialog.close();
+});
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js");
 render();
