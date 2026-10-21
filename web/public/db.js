@@ -17,6 +17,7 @@ let pendingWrite = null;
 let writeTimer = null;
 let writeQueue = Promise.resolve();
 let lastWriteError = null;
+let errorHandler = () => {};
 
 function clearPhotoUrlCache() {
   for (const url of photoUrlCache.values()) URL.revokeObjectURL(url);
@@ -60,6 +61,7 @@ function scheduleWrite() {
     writeQueue = writeQueue.then(() => writeSerialized(snapshot)).catch((error) => {
       lastWriteError = error;
       console.error("Riceball could not save data", error);
+      errorHandler(error);
     });
   }, 150);
 }
@@ -102,6 +104,7 @@ export const fileStore = {
   export: () => JSON.stringify(data, null, 2),
   import: async (json) => { data = normalizeData(JSON.parse(json)); dataLoaded = true; scheduleWrite(); await flushWrites(); return data; },
   flush: flushWrites,
+  setErrorHandler: (handler) => { errorHandler = typeof handler === "function" ? handler : () => {}; },
   backupToFolder: async () => {
     if (!folderHandle) throw new Error("Choose a Riceball folder before backing up");
     if (!("showDirectoryPicker" in window)) throw new Error("This browser does not support folder backups");

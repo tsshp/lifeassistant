@@ -3,13 +3,23 @@ import { fileStore } from "./db.js";
 const app = document.querySelector("#app");
 const dialog = document.querySelector("#entry-dialog");
 const itemActionsDialog = document.querySelector("#item-actions-dialog");
+const errorOverlay = document.querySelector("#error-overlay");
 const restoreInput = document.querySelector("#restore-input");
 const state = { tripId: null, tripSearch: "", search: "", unfulfilledOnly: false, tagId: "", storeTypeTagId: "", categoryTagId: "", storeId: "", pendingReceipts: false, receiptFilterType: "", showArchived: false, columns: 2, sort: "activity", sortDirection: "desc" };
+const errorLog = [];
+function renderErrors() {
+  errorOverlay.hidden = errorLog.length === 0 || errorOverlay.dataset.closed === "true";
+  errorOverlay.innerHTML = `<div class="error-overlay-header"><strong>Riceball errors (${errorLog.length})</strong><button type="button" data-close-errors aria-label="Close errors">×</button></div><div class="error-list">${errorLog.slice().reverse().map((entry) => `<article><time>${escapeHtml(entry.time)}</time><p>${escapeHtml(entry.message)}</p></article>`).join("")}</div>`;
+}
 function reportError(error) {
   const message = error instanceof Error ? error.message : String(error);
-  window.alert(`Riceball could not complete that action.\n\n${message}`);
+  errorLog.push({ message, time: new Date().toLocaleString() });
+  if (errorLog.length > 50) errorLog.shift();
+  errorOverlay.dataset.closed = "false";
+  renderErrors();
   console.error(error);
 }
+fileStore.setErrorHandler(reportError);
 async function load() {
   return fileStore.load();
 }
@@ -695,6 +705,11 @@ itemActionsDialog.addEventListener("click", async (event) => {
   if (action === "purchase") return openForm("purchase", { itemId });
   if (action === "sighting") return openForm("sighting", { itemId });
   if (action === "archive" && window.confirm("Archive this item?")) { item.status = "archived"; item.updatedAt = timestamp(); const removedPurchaseIds = new Set(data.purchases.filter((purchase) => purchase.itemId === item.id).map((purchase) => purchase.id)); data.purchases = data.purchases.filter((purchase) => !removedPurchaseIds.has(purchase.id)); for (const receipt of data.receipts) receipt.purchaseIds = (receipt.purchaseIds ?? []).filter((id) => !removedPurchaseIds.has(id)); await fileStore.save(data); render(); }
+});
+errorOverlay.addEventListener("click", (event) => {
+  if (!event.target.closest("[data-close-errors]")) return;
+  errorOverlay.dataset.closed = "true";
+  renderErrors();
 });
 app.addEventListener("input", (event) => {
   if (event.target.matches("[data-trip-search]")) { state.tripSearch = event.target.value; render(); return; }
