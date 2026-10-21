@@ -124,6 +124,11 @@ function syncAssignmentSelection(form) {
   }).catch(reportError);
 }
 
+function filterAssignmentItems(input) {
+  const query = input.value.trim().toLowerCase();
+  input.closest("[data-form]")?.querySelectorAll(".assignment-item").forEach((item) => { item.hidden = !item.dataset.assignmentName.includes(query); });
+}
+
 async function render() {
   const data = await load();
   if (initialRender) {
@@ -782,6 +787,9 @@ document.addEventListener("click", (event) => {
   if (itemActionsDialog.open && event.target === itemActionsDialog) itemActionsDialog.close();
   if (sortMenuDialog.open && event.target === sortMenuDialog) sortMenuDialog.close();
 }, true);
+document.addEventListener("input", (event) => {
+  if (event.target.matches("[data-assignment-search]")) filterAssignmentItems(event.target);
+}, true);
 
 let searchTimer;
 let longPressTimer;
@@ -833,7 +841,7 @@ errorOverlay.addEventListener("click", (event) => {
 });
 app.addEventListener("input", (event) => {
   if (event.target.matches("[data-trip-search]")) { state.tripSearch = event.target.value; render(); return; }
-  if (event.target.matches("[data-assignment-search]")) { const query = event.target.value.trim().toLowerCase(); event.target.closest("[data-form]")?.querySelectorAll(".assignment-item").forEach((item) => { item.hidden = !item.dataset.assignmentName.includes(query); }); return; }
+  if (event.target.matches("[data-assignment-search]")) { filterAssignmentItems(event.target); return; }
   if (!event.target.matches("[data-search]")) return;
   state.search = event.target.value;
   clearTimeout(searchTimer);
@@ -845,7 +853,7 @@ app.addEventListener("input", (event) => {
   }, 250);
 });
 app.addEventListener("keydown", (event) => {
-  if (event.key === "Enter" && event.target.matches("[data-assignment-search]")) event.preventDefault();
+  if (event.key === "Enter" && event.target.matches("[data-assignment-search]")) { event.preventDefault(); filterAssignmentItems(event.target); }
 });
 app.addEventListener("change", (event) => {
   const assignmentFormElement = event.target.closest("[data-form=\"store-items\"], [data-form=\"tag-items\"]");
