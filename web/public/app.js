@@ -6,7 +6,7 @@ const itemActionsDialog = document.querySelector("#item-actions-dialog");
 const photoViewerDialog = document.querySelector("#photo-viewer-dialog");
 const errorOverlay = document.querySelector("#error-overlay");
 const restoreInput = document.querySelector("#restore-input");
-const state = { tripId: null, tripSearch: "", search: "", unfulfilledOnly: false, tagId: "", storeTypeTagId: "", categoryTagId: "", storeId: "", pendingReceipts: false, receiptFilterType: "", showArchived: false, columns: 2, sort: "activity", sortDirection: "desc" };
+const state = { tripId: null, subpage: "overview", tripSearch: "", search: "", unfulfilledOnly: true, tagId: "", storeTypeTagId: "", categoryTagId: "", storeId: "", pendingReceipts: false, receiptFilterType: "", showArchived: false, columns: 4, sort: "activity", sortDirection: "desc" };
 const errorLog = [];
 function renderErrors() {
   errorOverlay.hidden = errorLog.length === 0 || errorOverlay.dataset.closed === "true";
@@ -63,20 +63,6 @@ function tagAndDescendants(tags, tagId) {
   return ids;
 }
 
-function filterKey() {
-  return JSON.stringify({ search: state.search, storeTypeTagId: state.storeTypeTagId, categoryTagId: state.categoryTagId, storeId: state.storeId, unfulfilledOnly: state.unfulfilledOnly });
-}
-
-async function rememberFilter(data, tripId, resultCount) {
-  if (!resultCount || (!state.search && !state.storeTypeTagId && !state.categoryTagId && !state.storeId && !state.unfulfilledOnly)) return;
-  const key = filterKey();
-  data.recentFilters = data.recentFilters.filter((filter) => filter.tripId !== tripId || filter.key !== key);
-  data.recentFilters.unshift({ id: identifier(), tripId, key, search: state.search, storeTypeTagId: state.storeTypeTagId, categoryTagId: state.categoryTagId, storeId: state.storeId, unfulfilledOnly: state.unfulfilledOnly, label: [state.search && `Search: ${state.search}`, (state.storeTypeTagId || state.categoryTagId) && "Tagged", state.storeId && "Store", state.unfulfilledOnly && "Unfulfilled"].filter(Boolean).join(" · "), createdAt: timestamp() });
-  const current = data.recentFilters.filter((filter) => filter.tripId === tripId).slice(0, 3);
-  data.recentFilters = [...data.recentFilters.filter((filter) => filter.tripId !== tripId), ...current];
-  await fileStore.save(data);
-}
-
 function renderHeader(title, action = "") {
   return `<header class="topbar"><button class="brand" data-action="home" aria-label="All trips"><span class="brand-mark">▲</span><span>riceball</span></button><div class="topbar-title">${title}</div><details class="top-actions"><summary>Actions</summary><div class="top-action-list">${action}</div></details></header>`;
 }
@@ -92,6 +78,24 @@ async function render() {
   renderTrip(data, trip);
 }
 
+function renderSubpage(data, trip, page) {
+  const back = `<button class="button" data-subpage="overview">Trip overview</button>`;
+  if (page === "receipts") {
+    const receipts = data.receipts.filter((receipt) => receipt.tripId === trip.id && (!state.pendingReceipts || receipt.totalMinor == null) && (!state.receiptFilterType || (receipt.splits ?? []).some((split) => (split.type || "Uncategorized") === state.receiptFilterType)));
+    app.innerHTML = `${renderHeader(`${escapeHtml(trip.name)} · Receipts`, `${back}<button class="button button-primary" data-action="new-receipt">Add receipt</button>`)}<section class="page-section"><div class="section-heading"><h1>Receipts</h1><button class="text-button" data-action="toggle-pending-receipts">${state.pendingReceipts ? "Show all" : "Pending only"}</button></div>${receipts.length ? receipts.map((receipt) => `<article class="receipt-row">${(receipt.photoPaths ?? (receipt.photoPath ? [receipt.photoPath] : [])).filter(Boolean).map((path) => `<img class="receipt-photo" data-photo="${escapeHtml(path)}" data-view-photo="${escapeHtml(path)}" alt="Receipt">`).join("")}<span>${receipt.totalMinor == null ? "Pending total" : formatMoney(receipt.totalMinor, trip.currency)}<small>${(receipt.purchaseIds ?? []).length} linked purchases</small></span><small>${new Date(receipt.createdAt).toLocaleDateString()}</small><button class="text-button" data-edit-receipt="${receipt.id}">Edit</button><button class="delete-button" data-delete-receipt="${receipt.id}">Delete</button></article>`).join("") : '<p class="muted">No receipts match this view.</p>'}</section>`;
+  } else if (page === "stores") {
+    const stores = data.stores.filter((store) => store.tripId === trip.id && store.status !== "archived");
+    app.innerHTML = `${renderHeader(`${escapeHtml(trip.name)} · Stores`, `${back}<button class="button button-primary" data-action="new-store">Add store</button>`)}<section class="page-section"><h1>Stores</h1>${stores.length ? stores.map((store) => `<article class="management-row"><span><strong>${escapeHtml(store.name)}</strong><small>${escapeHtml(store.notes ?? "")}</small></span><button class="text-button" data-edit-store="${store.id}">Edit</button><button class="delete-button" data-delete-store="${store.id}">Delete</button></article>`).join("") : '<p class="muted">No stores saved for this trip.</p>'}</section>`;
+  } else if (page === "tags") {
+    const tags = data.tags.filter((tag) => tag.tripId === trip.id && tag.status !== "archived");
+    app.innerHTML = `${renderHeader(`${escapeHtml(trip.name)} · Tags`, `${back}<button class="button button-primary" data-action="new-tag">Add tag</button>`)}<section class="page-section"><h1>Tags</h1>${tags.length ? tags.map((tag) => `<article class="management-row"><span><strong>${escapeHtml(tag.name)}</strong><small>${escapeHtml(tag.kind)}${tag.parentId ? " · child tag" : ""}</small></span><button class="text-button" data-edit-tag="${tag.id}">Edit</button><button class="delete-button" data-delete-tag="${tag.id}">Delete</button></article>`).join("") : '<p class="muted">No tags saved for this trip.</p>'}</section>`;
+  } else {
+    const types = data.purchaseTypes.filter((type) => type.tripId === trip.id && type.status !== "archived");
+    app.innerHTML = `${renderHeader(`${escapeHtml(trip.name)} · Purchase types`, `${back}<button class="button button-primary" data-action="new-purchase-type">Add type</button>`)}<section class="page-section"><h1>Purchase types</h1>${types.length ? types.map((type) => `<article class="management-row"><span><strong>${escapeHtml(type.name)}</strong></span><button class="text-button" data-edit-purchase-type="${type.id}">Edit</button><button class="delete-button" data-delete-purchase-type="${type.id}">Delete</button></article>`).join("") : '<p class="muted">No purchase types saved for this trip.</p>'}</section>`;
+  }
+  decoratePhotos();
+}
+
 function renderTrips(data) {
   const visibleTrips = data.trips.filter((trip) => (state.showArchived ? trip.status === "archived" : trip.status !== "archived") && trip.name.toLowerCase().includes(state.tripSearch.toLowerCase())).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
     app.innerHTML = `${renderHeader("Trips", `${folderButton()}${backupButtons()}<button class="button button-primary" data-action="new-trip">New trip</button>`)}
@@ -100,6 +104,7 @@ function renderTrips(data) {
 }
 
 function renderTrip(data, trip) {
+  if (state.subpage !== "overview") { renderSubpage(data, trip, state.subpage); return; }
   const allTripItems = data.items.filter((item) => item.tripId === trip.id);
   const tripItems = allTripItems.filter((item) => state.showArchived ? item.status === "archived" : item.status !== "archived");
   const tripStores = data.stores.filter((store) => store.tripId === trip.id && store.status !== "archived");
@@ -134,12 +139,11 @@ function renderTrip(data, trip) {
       const comparison = typeof leftValue === "number" ? leftValue - rightValue : String(leftValue).localeCompare(String(rightValue));
       return state.sortDirection === "asc" ? comparison : -comparison;
     });
-  const recentFilters = data.recentFilters.filter((filter) => filter.tripId === trip.id).slice(0, 3);
 
-  app.innerHTML = `${renderHeader(escapeHtml(trip.name), `${folderButton()}${backupButtons()}<button class="button" data-action="edit-trip">Edit trip</button><button class="button" data-action="archive-trip">Archive trip</button>${tripDrafts.length ? `<button class="button" data-review-draft="${tripDrafts[0].id}">Review drafts (${tripDrafts.length})</button>` : ""}<button class="button button-primary" data-action="new-item">Add item</button>`)}
+  app.innerHTML = `${renderHeader(escapeHtml(trip.name), `${folderButton()}${backupButtons()}<button class="button" data-subpage="receipts">Receipts</button><button class="button" data-subpage="stores">Stores</button><button class="button" data-subpage="tags">Tags</button><button class="button" data-subpage="purchase-types">Purchase types</button><button class="button" data-action="edit-trip">Edit trip</button><button class="button" data-action="archive-trip">Archive trip</button>${tripDrafts.length ? `<button class="button" data-review-draft="${tripDrafts[0].id}">Review drafts (${tripDrafts.length})</button>` : ""}<button class="button button-primary" data-action="new-item">Add item</button>`)}
     <section class="trip-hero"><p class="eyebrow">${escapeHtml(trip.currency)} · ${tripItems.length} wanted items</p><h1>${escapeHtml(trip.name)}</h1><div class="metric-row"><button class="metric-card" data-receipt-filter="__all__"><span>Receipt spend</span><strong>${formatMoney(total, trip.currency)}</strong></button><button class="metric-card" data-action="toggle-pending-receipts"><span>Pending receipts</span><strong>${pending}</strong></button><article><span>Items left</span><strong>${tripItems.filter((item) => !fulfillment(item, data.purchases).complete).length}</strong></article></div><div class="split-summary">${splitSummary || '<span>No purchase-type splits yet</span>'}</div>${state.receiptFilterType ? `<p class="filter-notice">Showing receipts for ${escapeHtml(state.receiptFilterType)} <button class="text-button" data-receipt-filter="__all__">Clear</button></p>` : ""}${splitWarning ? '<p class="storage-warning">One or more receipt split totals do not match the receipt total. Both values are retained.</p>' : ""}</section>
     <section class="controls"><input data-search type="search" value="${escapeHtml(state.search)}" placeholder="Search items"><select data-store-type-tag aria-label="Filter by store type"><option value="">All store types</option>${tripTags.filter((tag) => tag.kind === "store-type").map((tag) => `<option value="${tag.id}" ${state.storeTypeTagId === tag.id ? "selected" : ""}>${escapeHtml(tag.name)}</option>`).join("")}</select><select data-category-tag aria-label="Filter by category"><option value="">All categories</option>${tripTags.filter((tag) => tag.kind === "category").map((tag) => `<option value="${tag.id}" ${state.categoryTagId === tag.id ? "selected" : ""}>${escapeHtml(tag.name)}</option>`).join("")}</select><select data-store aria-label="Filter by saved store"><option value="">Any saved store</option>${tripStores.map((store) => `<option value="${store.id}" ${state.storeId === store.id ? "selected" : ""}>${escapeHtml(store.name)}</option>`).join("")}</select><label class="switch"><input data-unfulfilled type="checkbox" ${state.unfulfilledOnly ? "checked" : ""}><span>Unfulfilled</span></label><select data-sort aria-label="Sort items"><option value="activity" ${state.sort === "activity" ? "selected" : ""}>Recent activity</option><option value="name" ${state.sort === "name" ? "selected" : ""}>Name</option><option value="remaining" ${state.sort === "remaining" ? "selected" : ""}>Remaining quantity</option></select><button class="button" data-action="toggle-sort-direction">${state.sortDirection === "asc" ? "Ascending" : "Descending"}</button><select data-columns aria-label="Grid columns"><option value="1" ${state.columns === 1 ? "selected" : ""}>1 column</option><option value="2" ${state.columns === 2 ? "selected" : ""}>2 columns</option><option value="3" ${state.columns === 3 ? "selected" : ""}>3 columns</option></select></section>
-    <section class="items-section"><div class="section-heading"><h2>${state.showArchived ? "Archived items" : "Shopping list"}</h2><span>${filtered.length} shown</span><button class="text-button" data-action="toggle-archived-items">${state.showArchived ? "Show active items" : "Show archived items"}</button></div>${recentFilters.length ? `<div class="recent-filters"><strong>Recent filters</strong>${recentFilters.map((filter) => `<button class="text-button" data-recent-filter="${filter.id}">${escapeHtml(filter.label)}</button>`).join("")}</div>` : ""}<div class="item-grid columns-${state.columns}">${filtered.length ? filtered.map((item) => itemCard(item, data.purchases, data)).join("") : '<div class="empty-inline">No items match these filters.</div>'}</div></section>
+    <section class="items-section"><div class="section-heading"><h2>${state.showArchived ? "Archived items" : "Shopping list"}</h2><span>${filtered.length} shown</span><button class="text-button" data-action="toggle-archived-items">${state.showArchived ? "Show active items" : "Show archived items"}</button></div><div class="item-grid columns-${state.columns}">${filtered.length ? filtered.map((item) => itemCard(item, data.purchases, data)).join("") : '<div class="empty-inline">No items match these filters.</div>'}</div></section>
     <section class="receipt-section"><div class="section-heading"><h2>${state.pendingReceipts ? "Pending receipts" : "Receipts"}</h2><button class="text-button" data-action="toggle-pending-receipts">${state.pendingReceipts ? "Show all receipts" : `Review pending (${pending})`}</button><button class="text-button" data-action="new-receipt">Add receipt</button></div>${tripReceipts.length ? tripReceipts.slice().sort((left, right) => right.createdAt.localeCompare(left.createdAt)).map((receipt) => `<article class="receipt-row">${(receipt.photoPaths ?? (receipt.photoPath ? [receipt.photoPath] : [])).length ? `<div class="receipt-gallery">${(receipt.photoPaths ?? [receipt.photoPath]).filter(Boolean).map((path) => `<img class="receipt-photo" data-photo="${escapeHtml(path)}" data-view-photo="${escapeHtml(path)}" alt="Receipt">`).join("")}</div>` : ""}<span>${receipt.totalMinor == null ? "Pending total" : formatMoney(receipt.totalMinor, trip.currency)}<small>${(receipt.purchaseIds ?? []).length ? `${receipt.purchaseIds.length} linked purchases` : "No linked purchases"}</small></span><small>${new Date(receipt.createdAt).toLocaleDateString()}</small><button class="text-button" data-edit-receipt="${receipt.id}">Edit</button><button class="delete-button" data-delete-receipt="${receipt.id}">Delete</button></article>`).join("") : '<p class="muted">No receipts match this view.</p>'}</section>
     <section class="management-section"><div class="section-heading"><h2>Stores</h2><button class="text-button" data-action="new-store">Add store</button></div>${tripStores.length ? tripStores.map((store) => `<article class="management-row"><span><strong>${escapeHtml(store.name)}</strong><small>${escapeHtml(store.notes ?? "")}</small></span><button class="text-button" data-edit-store="${store.id}">Edit</button><button class="delete-button" data-delete-store="${store.id}">Delete</button></article>`).join("") : '<p class="muted">No stores saved for this trip.</p>'}</section>
     <section class="management-section"><div class="section-heading"><h2>Tags</h2><button class="text-button" data-action="new-tag">Add tag</button></div>${tripTags.length ? tripTags.map((tag) => `<article class="management-row"><span><strong>${escapeHtml(tag.name)}</strong><small>${escapeHtml(tag.kind)}</small></span><button class="text-button" data-edit-tag="${tag.id}">Edit</button><button class="delete-button" data-delete-tag="${tag.id}">Delete</button></article>`).join("") : '<p class="muted">No tags saved for this trip.</p>'}</section>
@@ -156,11 +160,12 @@ function itemCard(item, purchases, data) {
   const percent = Math.min(100, Math.round((progress.bought / item.desiredQuantity) * 100));
   const history = purchases.filter((purchase) => purchase.itemId === item.id && !purchase.quick);
   const sightings = data.priceSightings.filter((sighting) => sighting.itemId === item.id);
-  const lifecycle = state.showArchived ? `<button class="text-button" data-restore-item="${item.id}">Restore</button><button class="delete-button" data-delete-archived-item="${item.id}">Delete permanently</button>` : `<button class="delete-button" data-delete-item="${item.id}">Archive item</button>`;
+  const lifecycle = state.showArchived ? `<button class="text-button" data-restore-item="${item.id}">Restore</button><button class="delete-button" data-delete-archived-item="${item.id}">Delete permanently</button>` : "";
   const photoPaths = item.photoPaths ?? (item.photoPath ? [item.photoPath] : []);
-  const photos = photoPaths.length ? `<div class="photo-gallery">${photoPaths.map((path) => `<img class="item-photo" data-photo="${escapeHtml(path)}" data-view-photo="${escapeHtml(path)}" alt="${escapeHtml(item.name)}">`).join("")}</div>` : `<div class="item-art"><span>${escapeHtml(item.name.slice(0, 1).toUpperCase())}</span></div>`;
-  const statusText = progress.complete ? `Complete · ${progress.bought}/${item.desiredQuantity}${progress.bought > item.desiredQuantity ? ` · Overage ${progress.bought - item.desiredQuantity}` : ""}` : `${progress.remaining} remaining · ${progress.bought}/${item.desiredQuantity}`;
-  return `<article class="item-card" data-long-press-item="${item.id}">${photos}<div class="item-content"><h3>${escapeHtml(item.name)}</h3><p class="item-status">${statusText}</p>${state.showArchived ? "" : `<div class="stepper"><button data-decrement="${item.id}" aria-label="Decrease ${escapeHtml(item.name)}">−</button><strong>${progress.bought}</strong><button data-increment="${item.id}" aria-label="Increase ${escapeHtml(item.name)}">+</button></div>`}${history.map((purchase) => `<div class="purchase-line"><span>${purchase.quantity} purchased${purchase.totalMinor == null ? "" : ` · ${formatMoney(purchase.totalMinor, data.trips.find((trip) => trip.id === item.tripId)?.currency ?? "USD")}`}</span><button class="text-button" data-edit-purchase="${purchase.id}">Edit</button><button class="delete-button" data-delete-purchase="${purchase.id}">Delete</button></div>`).join("")}${sightings.map((sighting) => `<div class="purchase-line"><span>Price ${formatMoney(sighting.packagePriceMinor, data.trips.find((trip) => trip.id === item.tripId)?.currency ?? "USD")} / ${sighting.packageQuantity} = ${formatMoney(sighting.comparableMinor, data.trips.find((trip) => trip.id === item.tripId)?.currency ?? "USD")} each</span><button class="text-button" data-edit-sighting="${sighting.id}">Edit</button><button class="delete-button" data-delete-sighting="${sighting.id}">Delete</button></div>`).join("")}${lifecycle}</div></article>`;
+  const stepper = state.showArchived ? "" : `<div class="photo-stepper"><button data-decrement="${item.id}" aria-label="Decrease ${escapeHtml(item.name)}">−</button><strong>${progress.bought}</strong><button data-increment="${item.id}" aria-label="Increase ${escapeHtml(item.name)}">+</button></div>`;
+  const photoFrame = photoPaths.length ? `<div class="photo-frame"><div class="photo-gallery">${photoPaths.map((path) => `<img class="item-photo" data-photo="${escapeHtml(path)}" data-view-photo="${escapeHtml(path)}" alt="${escapeHtml(item.name)}">`).join("")}</div>${stepper}</div>` : `<div class="photo-frame"><div class="item-art"><span>${escapeHtml(item.name.slice(0, 1).toUpperCase())}</span></div>${stepper}</div>`;
+  const statusText = `${progress.bought}/${item.desiredQuantity}${progress.bought > item.desiredQuantity ? ` · +${progress.bought - item.desiredQuantity}` : ""}`;
+  return `<article class="item-card" data-long-press-item="${item.id}">${photoFrame}<div class="item-content"><h3 title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</h3><p class="item-status">${statusText}</p>${history.map((purchase) => `<div class="purchase-line"><span>${purchase.quantity} purchased${purchase.totalMinor == null ? "" : ` · ${formatMoney(purchase.totalMinor, data.trips.find((trip) => trip.id === item.tripId)?.currency ?? "USD")}`}</span><button class="text-button" data-edit-purchase="${purchase.id}">Edit</button><button class="delete-button" data-delete-purchase="${purchase.id}">Delete</button></div>`).join("")}${sightings.map((sighting) => `<div class="purchase-line"><span>Price ${formatMoney(sighting.packagePriceMinor, data.trips.find((trip) => trip.id === item.tripId)?.currency ?? "USD")} / ${sighting.packageQuantity} = ${formatMoney(sighting.comparableMinor, data.trips.find((trip) => trip.id === item.tripId)?.currency ?? "USD")} each</span><button class="text-button" data-edit-sighting="${sighting.id}">Edit</button><button class="delete-button" data-delete-sighting="${sighting.id}">Delete</button></div>`).join("")}${lifecycle}</div></article>`;
 }
 
 async function decoratePhotos() {
@@ -410,7 +415,7 @@ async function saveForm(form) {
 app.addEventListener("click", async (event) => {
   const target = event.target.closest("[data-action], [data-receipt-filter], [data-remove-form-photo], [data-open-trip], [data-increment], [data-decrement], [data-delete-item], [data-edit-item], [data-edit-receipt], [data-delete-receipt], [data-edit-store], [data-delete-store], [data-edit-tag], [data-delete-tag], [data-new-purchase], [data-edit-purchase], [data-delete-purchase], [data-new-sighting], [data-edit-sighting], [data-delete-sighting], [data-edit-purchase-type], [data-delete-purchase-type], [data-review-draft], [data-move-photo-up], [data-move-photo-down], [data-restore-trip], [data-delete-trip], [data-restore-item], [data-delete-archived-item]");
   if (!target) return;
-  if (target.dataset.receiptFilter) { state.receiptFilterType = target.dataset.receiptFilter === "__all__" ? "" : target.dataset.receiptFilter; state.pendingReceipts = false; render(); return; }
+  if (target.dataset.receiptFilter) { state.receiptFilterType = target.dataset.receiptFilter === "__all__" ? "" : target.dataset.receiptFilter; state.pendingReceipts = false; state.subpage = "receipts"; render(); return; }
   if (target.dataset.removeFormPhoto) {
     const data = await load();
     const collection = target.dataset.photoKind === "receipt" ? data.receipts : data.items;
@@ -457,18 +462,13 @@ app.addEventListener("click", async (event) => {
     try { await fileStore.backupToFolder(); window.alert("Riceball folder backup completed."); } catch (error) { reportError(error); }
     return;
   }
-  if (target.dataset.openTrip) { state.tripId = target.dataset.openTrip; state.showArchived = false; render(); return; }
-  if (target.dataset.action === "home") { state.tripId = null; state.tripSearch = ""; state.showArchived = false; render(); return; }
+  if (target.dataset.openTrip) { state.tripId = target.dataset.openTrip; state.subpage = "overview"; state.showArchived = false; render(); return; }
+  if (target.dataset.action === "home") { state.tripId = null; state.subpage = "overview"; state.tripSearch = ""; state.showArchived = false; render(); return; }
+  if (target.dataset.subpage) { state.subpage = target.dataset.subpage; state.pendingReceipts = false; render(); return; }
   if (target.dataset.action === "toggle-archived-trips") { state.showArchived = !state.showArchived; state.tripId = null; render(); return; }
   if (target.dataset.action === "toggle-archived-items") { state.showArchived = !state.showArchived; render(); return; }
-  if (target.dataset.action === "toggle-pending-receipts") { state.pendingReceipts = !state.pendingReceipts; render(); return; }
+  if (target.dataset.action === "toggle-pending-receipts") { state.pendingReceipts = !state.pendingReceipts; state.subpage = "receipts"; render(); return; }
   if (target.dataset.action === "toggle-sort-direction") { state.sortDirection = state.sortDirection === "asc" ? "desc" : "asc"; load().then((data) => { data.preferences.sortDirection = state.sortDirection; return fileStore.save(data); }).then(render).catch(reportError); return; }
-  if (target.dataset.recentFilter) {
-    const data = await load();
-    const filter = data.recentFilters.find((candidate) => candidate.id === target.dataset.recentFilter);
-    if (filter) { state.search = filter.search; state.storeTypeTagId = filter.storeTypeTagId ?? ""; state.categoryTagId = filter.categoryTagId ?? ""; state.storeId = filter.storeId ?? ""; state.unfulfilledOnly = filter.unfulfilledOnly; render(); }
-    return;
-  }
   if (target.dataset.action === "new-trip") return openForm("trip");
   if (target.dataset.action === "edit-trip") {
     const data = await load();
@@ -730,8 +730,6 @@ app.addEventListener("input", (event) => {
   searchTimer = setTimeout(async () => {
     try {
       const data = await load();
-      const resultCount = data.items.filter((item) => item.tripId === state.tripId && item.status !== "archived" && item.name.toLowerCase().includes(state.search.toLowerCase())).length;
-      await rememberFilter(data, state.tripId, resultCount);
       render();
     } catch (error) { reportError(error); }
   }, 250);
@@ -744,7 +742,7 @@ app.addEventListener("change", (event) => {
   if (event.target.matches("[data-store]")) state.storeId = event.target.value;
   if (event.target.matches("[data-sort]")) state.sort = event.target.value;
   if (event.target.matches("[data-columns]")) state.columns = Number(event.target.value);
-  load().then(async (data) => { data.preferences.columns = state.columns; data.preferences.sort = state.sort; data.preferences.sortDirection = state.sortDirection; await rememberFilter(data, state.tripId, data.items.filter((item) => item.tripId === state.tripId && item.status !== "archived").length); return fileStore.save(data); }).then(render).catch(reportError);
+  load().then(async (data) => { data.preferences.columns = state.columns; data.preferences.sort = state.sort; data.preferences.sortDirection = state.sortDirection; return fileStore.save(data); }).then(render).catch(reportError);
 });
 dialog.addEventListener("submit", (event) => { event.preventDefault(); saveForm(event.target).catch(reportError); });
 dialog.addEventListener("click", (event) => {

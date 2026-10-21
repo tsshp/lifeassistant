@@ -1,13 +1,15 @@
 const emptyData = () => ({
-  version: 2,
+  version: 3,
   trips: [], items: [], purchases: [], receipts: [], stores: [],
   tags: [], priceSightings: [], purchaseTypes: [], drafts: [], recentFilters: [],
-  preferences: { columns: 2, sort: "activity", sortDirection: "desc" }
+  preferences: { columns: 4, sort: "activity", sortDirection: "desc" }
 });
 function normalizeData(value) {
   const defaults = emptyData();
   const source = value && typeof value === "object" ? value : {};
-  return { ...defaults, ...source, preferences: { ...defaults.preferences, ...(source.preferences ?? {}) } };
+  const normalized = { ...defaults, ...source, preferences: { ...defaults.preferences, ...(source.preferences ?? {}) } };
+  if ((source.version ?? 0) < 3) { normalized.version = 3; normalized.preferences.columns = 4; }
+  return normalized;
 }
 let folderHandle = null;
 let data = emptyData();
