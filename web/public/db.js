@@ -2,7 +2,7 @@ const emptyData = () => ({
   version: 3,
   trips: [], items: [], purchases: [], receipts: [], stores: [],
   tags: [], priceSightings: [], purchaseTypes: [], drafts: [], recentFilters: [],
-  preferences: { columns: 4, sort: "activity", sortDirection: "desc" }
+  preferences: { columns: 4, sort: "name", sortDirection: "asc" }
 });
 function normalizeData(value) {
   const defaults = emptyData();

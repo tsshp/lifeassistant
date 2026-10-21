@@ -6,7 +6,7 @@ const itemActionsDialog = document.querySelector("#item-actions-dialog");
 const photoViewerDialog = document.querySelector("#photo-viewer-dialog");
 const errorOverlay = document.querySelector("#error-overlay");
 const restoreInput = document.querySelector("#restore-input");
-const state = { tripId: null, subpage: "overview", tripSearch: "", search: "", unfulfilledOnly: true, tagId: "", storeTypeTagId: "", categoryTagId: "", storeId: "", pendingReceipts: false, receiptFilterType: "", showArchived: false, columns: 4, sort: "activity", sortDirection: "desc" };
+const state = { tripId: null, subpage: "overview", tripSearch: "", search: "", unfulfilledOnly: true, tagId: "", storeTypeTagId: "", categoryTagId: "", storeId: "", pendingReceipts: false, receiptFilterType: "", showArchived: false, columns: 4, sort: "name", sortDirection: "asc" };
 let initialRender = true;
 const errorLog = [];
 function renderErrors() {
@@ -78,6 +78,31 @@ function floatingAdd(action, label) {
   return `<button class="floating-add" data-action="${action}" aria-label="${label}" title="${label}">+</button>`;
 }
 
+function removeRedundantMenuActions() {
+  app.querySelectorAll('.top-action-list [data-subpage], .top-action-list [data-action="new-item"], .top-action-list [data-action="new-receipt"], .top-action-list [data-action="new-store"], .top-action-list [data-action="new-tag"], .top-action-list [data-action="new-purchase-type"]').forEach((button) => button.remove());
+}
+
+function compactFilterRows(controls) {
+  const primary = document.createElement("div");
+  const secondary = document.createElement("div");
+  primary.className = "filter-row filter-row-primary";
+  secondary.className = "filter-row filter-row-secondary";
+  ["[data-search]", "[data-store-type-tag]", "[data-category-tag]", "[data-store]"].forEach((selector) => { const element = controls.querySelector(selector); if (element) primary.append(element); });
+  const unfulfilled = controls.querySelector("[data-unfulfilled]")?.closest("label");
+  if (unfulfilled) secondary.append(unfulfilled);
+  const sort = controls.querySelector("[data-sort]");
+  if (sort) {
+    sort.innerHTML = '<option value="name-asc">Name, ascending</option><option value="name-desc">Name, descending</option><option value="activity-asc">Recent activity, oldest first</option><option value="activity-desc">Recent activity, newest first</option><option value="remaining-asc">Remaining quantity, low to high</option><option value="remaining-desc">Remaining quantity, high to low</option>';
+    sort.value = `${state.sort}-${state.sortDirection}`;
+    secondary.append(sort);
+  }
+  const columns = controls.querySelector("[data-columns]");
+  if (columns) secondary.append(columns);
+  controls.querySelector('[data-action="toggle-sort-direction"]')?.remove();
+  secondary.insertAdjacentHTML("beforeend", '<button class="button" data-action="clear-filters">Clear filters</button>');
+  controls.replaceChildren(primary, secondary);
+}
+
 async function render() {
   const data = await load();
   if (initialRender) {
@@ -98,7 +123,10 @@ function renderSubpage(data, trip, page) {
   const back = `<button class="button" data-subpage="overview">Trip overview</button>`;
   if (page === "receipts") {
     const receipts = data.receipts.filter((receipt) => receipt.tripId === trip.id && (!state.pendingReceipts || receipt.totalMinor == null) && (!state.receiptFilterType || (receipt.splits ?? []).some((split) => (split.type || "Uncategorized") === state.receiptFilterType)));
-    app.innerHTML = `${renderHeader(`${escapeHtml(trip.name)} · Receipts`, `${back}<button class="button button-primary" data-action="new-receipt">Add receipt</button>`)}<section class="page-section"><div class="section-heading"><h1>Receipts</h1><button class="text-button" data-action="toggle-pending-receipts">${state.pendingReceipts ? "Show all" : "Pending only"}</button></div>${receipts.length ? receipts.map((receipt) => `<article class="receipt-row">${(receipt.photoPaths ?? (receipt.photoPath ? [receipt.photoPath] : [])).filter(Boolean).map((path) => `<img class="receipt-photo" data-photo="${escapeHtml(path)}" data-view-photo="${escapeHtml(path)}" alt="Receipt">`).join("")}<span>${receipt.totalMinor == null ? "Pending total" : formatMoney(receipt.totalMinor, trip.currency)}<small>${(receipt.purchaseIds ?? []).length} linked purchases</small></span><small>${new Date(receipt.createdAt).toLocaleDateString()}</small><button class="text-button" data-edit-receipt="${receipt.id}">Edit</button><button class="delete-button" data-delete-receipt="${receipt.id}">Delete</button></article>`).join("") : '<p class="muted">No receipts match this view.</p>'}</section>`;
+    const allReceipts = data.receipts.filter((receipt) => receipt.tripId === trip.id);
+    const total = allReceipts.reduce((sum, receipt) => sum + (receipt.totalMinor ?? 0), 0);
+    const pending = allReceipts.filter((receipt) => receipt.totalMinor == null).length;
+    app.innerHTML = `${renderHeader(`${escapeHtml(trip.name)} · Receipts`, `${back}<button class="button button-primary" data-action="new-receipt">Add receipt</button>`)}<section class="page-section"><div class="section-heading"><h1>Receipts</h1><button class="text-button" data-action="toggle-pending-receipts">${state.pendingReceipts ? "Show all" : "Pending only"}</button></div><div class="metric-row receipt-metrics"><article><span>Receipt spend</span><strong>${formatMoney(total, trip.currency)}</strong></article><button class="metric-card" data-action="toggle-pending-receipts"><span>Pending receipts</span><strong>${pending}</strong></button></div>${receipts.length ? receipts.map((receipt) => `<article class="receipt-row">${(receipt.photoPaths ?? (receipt.photoPath ? [receipt.photoPath] : [])).filter(Boolean).map((path) => `<img class="receipt-photo" data-photo="${escapeHtml(path)}" data-view-photo="${escapeHtml(path)}" alt="Receipt">`).join("")}<span>${receipt.totalMinor == null ? "Pending total" : formatMoney(receipt.totalMinor, trip.currency)}<small>${(receipt.purchaseIds ?? []).length} linked purchases</small></span><small>${new Date(receipt.createdAt).toLocaleDateString()}</small><button class="text-button" data-edit-receipt="${receipt.id}">Edit</button><button class="delete-button" data-delete-receipt="${receipt.id}">Delete</button></article>`).join("") : '<p class="muted">No receipts match this view.</p>'}</section>`;
   } else if (page === "stores") {
     const stores = data.stores.filter((store) => store.tripId === trip.id && store.status !== "archived");
     app.innerHTML = `${renderHeader(`${escapeHtml(trip.name)} · Stores`, `${back}<button class="button button-primary" data-action="new-store">Add store</button>`)}<section class="page-section"><h1>Stores</h1>${stores.length ? stores.map((store) => `<article class="management-row"><span><strong>${escapeHtml(store.name)}</strong><small>${escapeHtml(store.notes ?? "")}</small></span><button class="text-button" data-edit-store="${store.id}">Edit</button><button class="delete-button" data-delete-store="${store.id}">Delete</button></article>`).join("") : '<p class="muted">No stores saved for this trip.</p>'}</section>`;
@@ -110,6 +138,7 @@ function renderSubpage(data, trip, page) {
     app.innerHTML = `${renderHeader(`${escapeHtml(trip.name)} · Purchase types`, `${back}<button class="button button-primary" data-action="new-purchase-type">Add type</button>`)}<section class="page-section"><h1>Purchase types</h1>${types.length ? types.map((type) => `<article class="management-row"><span><strong>${escapeHtml(type.name)}</strong></span><button class="text-button" data-edit-purchase-type="${type.id}">Edit</button><button class="delete-button" data-delete-purchase-type="${type.id}">Delete</button></article>`).join("") : '<p class="muted">No purchase types saved for this trip.</p>'}</section>`;
   }
   app.insertAdjacentHTML("beforeend", floatingAdd({ receipts: "new-receipt", stores: "new-store", tags: "new-tag", "purchase-types": "new-purchase-type" }[page], `Add ${page === "purchase-types" ? "purchase type" : page.slice(0, -1)}`));
+  removeRedundantMenuActions();
   decoratePhotos();
 }
 
@@ -119,6 +148,7 @@ function renderTrips(data) {
     <section class="hero"><p class="eyebrow">Offline vacation shopping</p><h1>Keep the good finds, lose the paper trail.</h1><p>Trips, shopping quantities, and receipts stay in your chosen Riceball folder.</p>${fileStore.hasFolder() ? '<p class="storage-ready">Folder connected. Data saves to <code>riceball.json</code>.</p>' : '<p class="storage-warning">Choose a folder before creating data so it can be saved outside browser storage.</p>'}</section>
     <section class="section-heading"><h2>${state.showArchived ? "Archived trips" : "Active trips"}</h2><button class="text-button" data-action="toggle-archived-trips">${state.showArchived ? "Show active trips" : "Show archived trips"}</button></section><section class="controls trip-controls"><input data-trip-search type="search" value="${escapeHtml(state.tripSearch)}" placeholder="Search trips" aria-label="Search trips"></section><section class="trip-list">${visibleTrips.length ? visibleTrips.map((trip) => `<article class="trip-card"><button class="trip-card-open" data-open-trip="${trip.id}"><span class="trip-card-arrow">↗</span><span class="trip-card-name">${escapeHtml(trip.name)}</span><span>${escapeHtml(trip.currency)}</span></button>${state.showArchived ? `<button class="text-button" data-restore-trip="${trip.id}">Restore</button><button class="delete-button" data-delete-trip="${trip.id}">Delete permanently</button>` : ""}</article>`).join("") : '<div class="empty-state"><span class="empty-mark">△</span><h2>No matching trips.</h2><p>Try a different search or create a new trip.</p><button class="button button-primary" data-action="new-trip">Create trip</button></div>'}</section>`;
   app.insertAdjacentHTML("beforeend", floatingAdd("new-trip", "Add trip"));
+  removeRedundantMenuActions();
 }
 
 function renderTrip(data, trip) {
@@ -159,7 +189,7 @@ function renderTrip(data, trip) {
     });
 
   app.innerHTML = `${renderHeader(escapeHtml(trip.name), `${folderButton()}${backupButtons()}<button class="button" data-subpage="receipts">Receipts</button><button class="button" data-subpage="stores">Stores</button><button class="button" data-subpage="tags">Tags</button><button class="button" data-subpage="purchase-types">Purchase types</button><button class="button" data-action="edit-trip">Edit trip</button><button class="button" data-action="archive-trip">Archive trip</button>${tripDrafts.length ? `<button class="button" data-review-draft="${tripDrafts[0].id}">Review drafts (${tripDrafts.length})</button>` : ""}<button class="button button-primary" data-action="new-item">Add item</button>`)}
-    <section class="trip-hero"><p class="eyebrow">${escapeHtml(trip.currency)} · ${tripItems.length} wanted items</p><h1>${escapeHtml(trip.name)}</h1><div class="metric-row"><button class="metric-card" data-receipt-filter="__all__"><span>Receipt spend</span><strong>${formatMoney(total, trip.currency)}</strong></button><button class="metric-card" data-action="toggle-pending-receipts"><span>Pending receipts</span><strong>${pending}</strong></button><article><span>Items left</span><strong>${tripItems.filter((item) => !fulfillment(item, data.purchases).complete).length}</strong></article></div><div class="split-summary">${splitSummary || '<span>No purchase-type splits yet</span>'}</div>${state.receiptFilterType ? `<p class="filter-notice">Showing receipts for ${escapeHtml(state.receiptFilterType)} <button class="text-button" data-receipt-filter="__all__">Clear</button></p>` : ""}${splitWarning ? '<p class="storage-warning">One or more receipt split totals do not match the receipt total. Both values are retained.</p>' : ""}</section>
+    <section class="trip-hero"><p class="eyebrow">${escapeHtml(trip.currency)} · ${tripItems.length} wanted items</p><h1>${escapeHtml(trip.name)}</h1>${state.receiptFilterType ? `<p class="filter-notice">Showing receipts for ${escapeHtml(state.receiptFilterType)} <button class="text-button" data-receipt-filter="__all__">Clear</button></p>` : ""}${splitWarning ? '<p class="storage-warning">One or more receipt split totals do not match the receipt total. Both values are retained.</p>' : ""}</section>
     <section class="controls"><input data-search type="search" value="${escapeHtml(state.search)}" placeholder="Search items"><select data-store-type-tag aria-label="Filter by store type"><option value="">All store types</option>${tripTags.filter((tag) => tag.kind === "store-type").map((tag) => `<option value="${tag.id}" ${state.storeTypeTagId === tag.id ? "selected" : ""}>${escapeHtml(tag.name)}</option>`).join("")}</select><select data-category-tag aria-label="Filter by category"><option value="">All categories</option>${tripTags.filter((tag) => tag.kind === "category").map((tag) => `<option value="${tag.id}" ${state.categoryTagId === tag.id ? "selected" : ""}>${escapeHtml(tag.name)}</option>`).join("")}</select><select data-store aria-label="Filter by saved store"><option value="">Any saved store</option>${tripStores.map((store) => `<option value="${store.id}" ${state.storeId === store.id ? "selected" : ""}>${escapeHtml(store.name)}</option>`).join("")}</select><label class="switch"><input data-unfulfilled type="checkbox" ${state.unfulfilledOnly ? "checked" : ""}><span>Unfulfilled</span></label><select data-sort aria-label="Sort items"><option value="activity" ${state.sort === "activity" ? "selected" : ""}>Recent activity</option><option value="name" ${state.sort === "name" ? "selected" : ""}>Name</option><option value="remaining" ${state.sort === "remaining" ? "selected" : ""}>Remaining quantity</option></select><button class="button" data-action="toggle-sort-direction">${state.sortDirection === "asc" ? "Ascending" : "Descending"}</button><select data-columns aria-label="Grid columns"><option value="1" ${state.columns === 1 ? "selected" : ""}>1 column</option><option value="2" ${state.columns === 2 ? "selected" : ""}>2 columns</option><option value="3" ${state.columns === 3 ? "selected" : ""}>3 columns</option></select></section>
     <section class="items-section"><div class="section-heading"><h2>${state.showArchived ? "Archived items" : "Shopping list"}</h2><span>${filtered.length} shown</span><button class="text-button" data-action="toggle-archived-items">${state.showArchived ? "Show active items" : "Show archived items"}</button></div><div class="item-grid columns-${state.columns}">${filtered.length ? filtered.map((item) => itemCard(item, data.purchases, data)).join("") : '<div class="empty-inline">No items match these filters.</div>'}</div></section>
     <section class="receipt-section"><div class="section-heading"><h2>${state.pendingReceipts ? "Pending receipts" : "Receipts"}</h2><button class="text-button" data-action="toggle-pending-receipts">${state.pendingReceipts ? "Show all receipts" : `Review pending (${pending})`}</button><button class="text-button" data-action="new-receipt">Add receipt</button></div>${tripReceipts.length ? tripReceipts.slice().sort((left, right) => right.createdAt.localeCompare(left.createdAt)).map((receipt) => `<article class="receipt-row">${(receipt.photoPaths ?? (receipt.photoPath ? [receipt.photoPath] : [])).length ? `<div class="receipt-gallery">${(receipt.photoPaths ?? [receipt.photoPath]).filter(Boolean).map((path) => `<img class="receipt-photo" data-photo="${escapeHtml(path)}" data-view-photo="${escapeHtml(path)}" alt="Receipt">`).join("")}</div>` : ""}<span>${receipt.totalMinor == null ? "Pending total" : formatMoney(receipt.totalMinor, trip.currency)}<small>${(receipt.purchaseIds ?? []).length ? `${receipt.purchaseIds.length} linked purchases` : "No linked purchases"}</small></span><small>${new Date(receipt.createdAt).toLocaleDateString()}</small><button class="text-button" data-edit-receipt="${receipt.id}">Edit</button><button class="delete-button" data-delete-receipt="${receipt.id}">Delete</button></article>`).join("") : '<p class="muted">No receipts match this view.</p>'}</section>
@@ -169,8 +199,9 @@ function renderTrip(data, trip) {
   app.querySelector(".receipt-section")?.remove();
   app.querySelectorAll(".management-section").forEach((section) => section.remove());
   app.insertAdjacentHTML("beforeend", floatingAdd("new-item", "Add item"));
+  removeRedundantMenuActions();
   const controls = app.querySelector(".controls");
-  if (controls) { const filterPanel = document.createElement("details"); filterPanel.className = "filter-panel"; filterPanel.innerHTML = "<summary>Filters</summary>"; controls.parentNode.insertBefore(filterPanel, controls); filterPanel.append(controls); }
+  if (controls) { controls.classList.add("filter-panel"); compactFilterRows(controls); }
   const columnSelect = app.querySelector("[data-columns]");
   if (columnSelect) columnSelect.insertAdjacentHTML("beforeend", `<option value="4" ${state.columns === 4 ? "selected" : ""}>4 columns</option><option value="5" ${state.columns === 5 ? "selected" : ""}>5 columns</option>`);
   decoratePhotos();
@@ -491,6 +522,7 @@ app.addEventListener("click", async (event) => {
   if (target.dataset.action === "toggle-archived-items") { state.showArchived = !state.showArchived; render(); return; }
   if (target.dataset.action === "toggle-pending-receipts") { state.pendingReceipts = !state.pendingReceipts; state.subpage = "receipts"; render(); return; }
   if (target.dataset.action === "toggle-sort-direction") { state.sortDirection = state.sortDirection === "asc" ? "desc" : "asc"; load().then((data) => { data.preferences.sortDirection = state.sortDirection; return fileStore.save(data); }).then(render).catch(reportError); return; }
+  if (target.dataset.action === "clear-filters") { state.search = ""; state.tagId = ""; state.storeTypeTagId = ""; state.categoryTagId = ""; state.storeId = ""; state.unfulfilledOnly = true; state.columns = 4; state.sort = "name"; state.sortDirection = "asc"; render(); return; }
   if (target.dataset.action === "new-trip") return openForm("trip");
   if (target.dataset.action === "edit-trip") {
     const data = await load();
@@ -776,7 +808,7 @@ app.addEventListener("change", (event) => {
   if (event.target.matches("[data-store-type-tag]")) state.storeTypeTagId = event.target.value;
   if (event.target.matches("[data-category-tag]")) state.categoryTagId = event.target.value;
   if (event.target.matches("[data-store]")) state.storeId = event.target.value;
-  if (event.target.matches("[data-sort]")) state.sort = event.target.value;
+  if (event.target.matches("[data-sort]")) [state.sort, state.sortDirection] = event.target.value.split("-");
   if (event.target.matches("[data-columns]")) state.columns = Number(event.target.value);
   load().then(async (data) => { data.preferences.columns = state.columns; data.preferences.sort = state.sort; data.preferences.sortDirection = state.sortDirection; return fileStore.save(data); }).then(render).catch(reportError);
 });
