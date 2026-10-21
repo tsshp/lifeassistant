@@ -86,8 +86,8 @@ function floatingAdd(action, label) {
 function assignmentForm(kind, data, trip) {
   const items = data.items.filter((item) => item.tripId === trip.id && item.status !== "archived").sort((left, right) => left.name.localeCompare(right.name));
   const records = kind === "store" ? data.stores.filter((record) => record.tripId === trip.id && record.status !== "archived") : data.tags.filter((record) => record.tripId === trip.id && record.status !== "archived");
-  const itemOptions = items.map((item) => { const photo = (item.photoPaths ?? (item.photoPath ? [item.photoPath] : []))[0]; return `<label class="assignment-item"><input type="checkbox" name="itemIds" value="${item.id}">${photo ? `<img data-photo="${escapeHtml(photo)}" alt="${escapeHtml(item.name)}">` : `<span class="assignment-placeholder">${escapeHtml(item.name.slice(0, 1).toUpperCase())}</span>`}<span>${escapeHtml(item.name)}</span></label>`; }).join("");
-  return `<form class="assignment-form" data-form="${kind}-items"><h2>Assign items to ${kind === "store" ? "a store" : "a tag"}</h2><label>${kind === "store" ? "Store" : "Tag"}<select name="targetId" required><option value="">Select ${kind}</option>${records.map((record) => `<option value="${record.id}">${escapeHtml(record.name)}</option>`).join("")}</select></label><div class="assignment-items"><strong>Shopping-list items</strong>${itemOptions || '<span class="muted">No items available.</span>'}</div><button class="button button-primary" type="submit">Save assignments</button></form>`;
+  const itemOptions = items.map((item) => { const photo = (item.photoPaths ?? (item.photoPath ? [item.photoPath] : []))[0]; return `<label class="assignment-item" data-assignment-name="${escapeHtml(item.name.toLowerCase())}"><input type="checkbox" name="itemIds" value="${item.id}">${photo ? `<img data-photo="${escapeHtml(photo)}" alt="${escapeHtml(item.name)}">` : `<span class="assignment-placeholder">${escapeHtml(item.name.slice(0, 1).toUpperCase())}</span>`}<span>${escapeHtml(item.name)}</span></label>`; }).join("");
+  return `<form class="assignment-form" data-form="${kind}-items"><h2>Assign items to ${kind === "store" ? "a store" : "a tag"}</h2><label>${kind === "store" ? "Store" : "Tag"}<select name="targetId" required><option value="">Select ${kind}</option>${records.map((record) => `<option value="${record.id}">${escapeHtml(record.name)}</option>`).join("")}</select></label><div class="assignment-toolbar"><input data-assignment-search type="search" placeholder="Search items" aria-label="Search items"><button type="button" class="filter-icon" data-action="assignment-select-visible">Select visible</button><button type="button" class="filter-icon" data-action="assignment-deselect-visible">Deselect visible</button></div><div class="assignment-items">${itemOptions || '<span class="muted">No items available.</span>'}</div><button class="button button-primary" type="submit">Save assignments</button></form>`;
 }
 
 function openSortMenu() {
@@ -536,6 +536,7 @@ app.addEventListener("click", async (event) => {
   if (target.dataset.action === "toggle-pending-receipts") { state.pendingReceipts = !state.pendingReceipts; state.subpage = "receipts"; render(); return; }
   if (target.dataset.action === "toggle-sort-direction") { state.sortDirection = state.sortDirection === "asc" ? "desc" : "asc"; load().then((data) => { data.preferences.sortDirection = state.sortDirection; return fileStore.save(data); }).then(render).catch(reportError); return; }
   if (target.dataset.action === "clear-filters") { state.search = ""; state.tagId = ""; state.storeTypeTagId = ""; state.categoryTagId = ""; state.storeId = ""; state.unfulfilledOnly = true; state.columns = 4; state.sort = "name"; state.sortDirection = "asc"; render(); return; }
+  if (target.dataset.action === "assignment-select-visible" || target.dataset.action === "assignment-deselect-visible") { const form = target.closest("[data-form]"); form?.querySelectorAll(".assignment-item:not([hidden]) input[name=itemIds]").forEach((checkbox) => { checkbox.checked = target.dataset.action === "assignment-select-visible"; }); return; }
   if (target.dataset.action === "toggle-dark-mode") { darkMode = !darkMode; localStorage.setItem("riceball-dark-mode", String(darkMode)); applyTheme(); render(); return; }
   if (target.dataset.action === "toggle-unfulfilled") { state.unfulfilledOnly = !state.unfulfilledOnly; render(); return; }
   if (target.dataset.action === "cycle-columns") { state.columns = state.columns >= 5 ? 1 : state.columns + 1; render(); return; }
@@ -814,6 +815,7 @@ errorOverlay.addEventListener("click", (event) => {
 });
 app.addEventListener("input", (event) => {
   if (event.target.matches("[data-trip-search]")) { state.tripSearch = event.target.value; render(); return; }
+  if (event.target.matches("[data-assignment-search]")) { const query = event.target.value.trim().toLowerCase(); event.target.closest("[data-form]")?.querySelectorAll(".assignment-item").forEach((item) => { item.hidden = !item.dataset.assignmentName.includes(query); }); return; }
   if (!event.target.matches("[data-search]")) return;
   state.search = event.target.value;
   clearTimeout(searchTimer);
