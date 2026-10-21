@@ -88,18 +88,11 @@ function compactFilterRows(controls) {
   primary.className = "filter-row filter-row-primary";
   secondary.className = "filter-row filter-row-secondary";
   ["[data-search]", "[data-store-type-tag]", "[data-category-tag]", "[data-store]"].forEach((selector) => { const element = controls.querySelector(selector); if (element) primary.append(element); });
-  const unfulfilled = controls.querySelector("[data-unfulfilled]")?.closest("label");
-  if (unfulfilled) secondary.append(unfulfilled);
-  const sort = controls.querySelector("[data-sort]");
-  if (sort) {
-    sort.innerHTML = '<option value="name-asc">Name, ascending</option><option value="name-desc">Name, descending</option><option value="activity-asc">Recent activity, oldest first</option><option value="activity-desc">Recent activity, newest first</option><option value="remaining-asc">Remaining quantity, low to high</option><option value="remaining-desc">Remaining quantity, high to low</option>';
-    sort.value = `${state.sort}-${state.sortDirection}`;
-    secondary.append(sort);
-  }
-  const columns = controls.querySelector("[data-columns]");
-  if (columns) secondary.append(columns);
+  controls.querySelector("[data-unfulfilled]")?.closest("label")?.remove();
+  controls.querySelector("[data-sort]")?.remove();
+  controls.querySelector("[data-columns]")?.remove();
   controls.querySelector('[data-action="toggle-sort-direction"]')?.remove();
-  secondary.insertAdjacentHTML("beforeend", '<button class="button" data-action="clear-filters">Clear filters</button>');
+  secondary.insertAdjacentHTML("beforeend", `<button class="filter-icon ${state.unfulfilledOnly ? "active" : ""}" data-action="toggle-unfulfilled" aria-label="${state.unfulfilledOnly ? "Showing unfulfilled items" : "Showing all items"}" title="${state.unfulfilledOnly ? "Showing unfulfilled items" : "Showing all items"}">${state.unfulfilledOnly ? "✅" : "⬜"}</button><button class="filter-icon" data-action="cycle-columns" aria-label="Columns: ${state.columns}" title="Columns: ${state.columns}">▦${state.columns}</button><button class="filter-icon" data-action="cycle-sort" aria-label="Sort: ${state.sort}, ${state.sortDirection}" title="Sort: ${state.sort}, ${state.sortDirection}">↕</button><button class="filter-icon" data-action="clear-filters" aria-label="Clear filters" title="Clear filters">×</button>`);
   controls.replaceChildren(primary, secondary);
 }
 
@@ -523,6 +516,9 @@ app.addEventListener("click", async (event) => {
   if (target.dataset.action === "toggle-pending-receipts") { state.pendingReceipts = !state.pendingReceipts; state.subpage = "receipts"; render(); return; }
   if (target.dataset.action === "toggle-sort-direction") { state.sortDirection = state.sortDirection === "asc" ? "desc" : "asc"; load().then((data) => { data.preferences.sortDirection = state.sortDirection; return fileStore.save(data); }).then(render).catch(reportError); return; }
   if (target.dataset.action === "clear-filters") { state.search = ""; state.tagId = ""; state.storeTypeTagId = ""; state.categoryTagId = ""; state.storeId = ""; state.unfulfilledOnly = true; state.columns = 4; state.sort = "name"; state.sortDirection = "asc"; render(); return; }
+  if (target.dataset.action === "toggle-unfulfilled") { state.unfulfilledOnly = !state.unfulfilledOnly; render(); return; }
+  if (target.dataset.action === "cycle-columns") { state.columns = state.columns >= 5 ? 1 : state.columns + 1; render(); return; }
+  if (target.dataset.action === "cycle-sort") { const options = [["name", "asc"], ["name", "desc"], ["activity", "asc"], ["activity", "desc"], ["remaining", "asc"], ["remaining", "desc"]]; const index = options.findIndex(([sort, direction]) => sort === state.sort && direction === state.sortDirection); [state.sort, state.sortDirection] = options[(index + 1) % options.length]; render(); return; }
   if (target.dataset.action === "new-trip") return openForm("trip");
   if (target.dataset.action === "edit-trip") {
     const data = await load();
