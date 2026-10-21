@@ -153,9 +153,9 @@ function itemCard(item, purchases, data) {
 }
 
 async function decoratePhotos() {
-  for (const image of app.querySelectorAll("[data-photo]")) {
+  await Promise.all([...app.querySelectorAll("[data-photo]")].map(async (image) => {
     try { image.src = await fileStore.photoUrl(image.dataset.photo); } catch { image.remove(); }
-  }
+  }));
 }
 
 function openItemActions(itemId) {
@@ -736,5 +736,6 @@ restoreInput.addEventListener("change", async () => {
 });
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js");
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") finalizeQuickPurchases().catch(reportError); });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") { finalizeQuickPurchases().then(() => fileStore.flush()).catch(reportError); } });
+window.addEventListener("pagehide", () => { fileStore.flush().catch(reportError); });
 render();

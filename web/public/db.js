@@ -11,9 +11,21 @@ function normalizeData(value) {
 }
 let folderHandle = null;
 let data = emptyData();
+let dataLoaded = false;
+const photoUrlCache = new Map();
+let pendingWrite = null;
+let writeTimer = null;
+let writeQueue = Promise.resolve();
+let lastWriteError = null;
+
+function clearPhotoUrlCache() {
+  for (const url of photoUrlCache.values()) URL.revokeObjectURL(url);
+  photoUrlCache.clear();
+}
 
 async function readData() {
   if (!folderHandle) return data;
+  if (dataLoaded) return data;
   try {
     const fileHandle = await folderHandle.getFileHandle("riceball.json");
     data = normalizeData(JSON.parse(await (await fileHandle.getFile()).text()));
@@ -22,15 +34,49 @@ async function readData() {
     data = emptyData();
     await writeData();
   }
+  dataLoaded = true;
   return data;
 }
 
 async function writeData() {
   if (!folderHandle) throw new Error("Choose a Riceball folder before saving");
+  return writeSerialized(JSON.stringify(data, null, 2));
+}
+
+async function writeSerialized(serialized) {
+  if (!folderHandle) throw new Error("Choose a Riceball folder before saving");
   const fileHandle = await folderHandle.getFileHandle("riceball.json", { create: true });
   const writable = await fileHandle.createWritable();
-  await writable.write(JSON.stringify(data, null, 2));
+  await writable.write(serialized);
   await writable.close();
+}
+
+function scheduleWrite() {
+  pendingWrite = JSON.stringify(data, null, 2);
+  clearTimeout(writeTimer);
+  writeTimer = setTimeout(() => {
+    const snapshot = pendingWrite;
+    pendingWrite = null;
+    writeQueue = writeQueue.then(() => writeSerialized(snapshot)).catch((error) => {
+      lastWriteError = error;
+      console.error("Riceball could not save data", error);
+    });
+  }, 150);
+}
+
+async function flushWrites() {
+  if (pendingWrite !== null) {
+    clearTimeout(writeTimer);
+    const snapshot = pendingWrite;
+    pendingWrite = null;
+    writeQueue = writeQueue.then(() => writeSerialized(snapshot));
+  }
+  await writeQueue;
+  if (lastWriteError) {
+    const error = lastWriteError;
+    lastWriteError = null;
+    throw error;
+  }
 }
 
 async function ensurePermission() {
@@ -46,17 +92,21 @@ export const fileStore = {
     if (!("showDirectoryPicker" in window)) throw new Error("This browser does not support folder access. Use Chrome or Edge on Android/desktop.");
     folderHandle = await window.showDirectoryPicker({ mode: "readwrite" });
     if (!(await ensurePermission())) throw new Error("Read/write permission was not granted for the selected folder");
+    clearPhotoUrlCache();
+    dataLoaded = false;
     await readData();
     return data;
   },
   load: readData,
-  save: async (nextData) => { data = nextData; await writeData(); return data; },
+  save: async (nextData) => { data = nextData; dataLoaded = true; scheduleWrite(); return data; },
   export: () => JSON.stringify(data, null, 2),
-  import: async (json) => { data = normalizeData(JSON.parse(json)); await writeData(); return data; },
+  import: async (json) => { data = normalizeData(JSON.parse(json)); dataLoaded = true; scheduleWrite(); await flushWrites(); return data; },
+  flush: flushWrites,
   backupToFolder: async () => {
     if (!folderHandle) throw new Error("Choose a Riceball folder before backing up");
     if (!("showDirectoryPicker" in window)) throw new Error("This browser does not support folder backups");
     const target = await window.showDirectoryPicker({ mode: "readwrite" });
+    await flushWrites();
     const jsonHandle = await target.getFileHandle("riceball.json", { create: true });
     const jsonWriter = await jsonHandle.createWritable();
     await jsonWriter.write(JSON.stringify(data, null, 2));
@@ -90,6 +140,8 @@ export const fileStore = {
     bitmap.close();
     const normalized = await new Promise((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("Could not normalize image")), "image/jpeg", 0.9));
     const relativePath = `photos/${photoId}.jpg`;
+    const oldUrl = photoUrlCache.get(relativePath);
+    if (oldUrl) { URL.revokeObjectURL(oldUrl); photoUrlCache.delete(relativePath); }
     const photoHandle = await photos.getFileHandle(`${photoId}.jpg`, { create: true });
     const writable = await photoHandle.createWritable();
     await writable.write(await normalized.arrayBuffer());
@@ -107,13 +159,18 @@ export const fileStore = {
     if (!folderHandle || !relativePath) return;
     const [directoryName, fileName] = relativePath.split("/");
     const directory = await folderHandle.getDirectoryHandle(directoryName);
+    const oldUrl = photoUrlCache.get(relativePath);
+    if (oldUrl) { URL.revokeObjectURL(oldUrl); photoUrlCache.delete(relativePath); }
     await directory.removeEntry(fileName);
   },
   photoUrl: async (relativePath) => {
     if (!folderHandle || !relativePath) return null;
+    if (photoUrlCache.has(relativePath)) return photoUrlCache.get(relativePath);
     const [directoryName, fileName] = relativePath.split("/");
     const directory = await folderHandle.getDirectoryHandle(directoryName);
     const fileHandle = await directory.getFileHandle(fileName);
-    return URL.createObjectURL(await fileHandle.getFile());
+    const url = URL.createObjectURL(await fileHandle.getFile());
+    photoUrlCache.set(relativePath, url);
+    return url;
   }
 };
