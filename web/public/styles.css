@@ -65,3 +65,5 @@ body.dark-mode { color: var(--ink); background: #000; }.dark-mode .topbar, .dark
 .assignment-item span:not(.assignment-placeholder) { z-index: 1; }
 .assignment-form .assignment-item input { z-index: 2; }
 .assignment-form .assignment-item span:not(.assignment-placeholder) { z-index: 1; }
+.assignment-form .assignment-item { height: clamp(5rem, 18vw, 8rem); aspect-ratio: 1; }
+.assignment-form .assignment-item > img { position: absolute !important; inset: 0 !important; display: block !important; width: 100% !important; height: 100% !important; object-fit: cover; }
