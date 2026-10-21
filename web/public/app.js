@@ -64,8 +64,18 @@ function tagAndDescendants(tags, tagId) {
   return ids;
 }
 
-function renderHeader(title, action = "") {
-  return `<header class="topbar"><button class="brand" data-action="home" aria-label="All trips"><span class="brand-mark">▲</span><span>riceball</span></button><div class="topbar-title">${title}</div><details class="top-actions"><summary>Actions</summary><div class="top-action-list">${action}</div></details></header>`;
+function tripNavigation(page) {
+  const links = [["overview", "⌂", "Trip overview"], ["receipts", "▤", "Receipts"], ["stores", "⌂", "Stores"], ["tags", "#", "Tags"], ["purchase-types", "◈", "Purchase types"]];
+  return `<nav class="trip-nav" aria-label="Trip pages">${links.map(([id, icon, label]) => `<button class="trip-nav-button ${page === id ? "active" : ""}" data-subpage="${id}" aria-label="${label}" title="${label}">${icon}</button>`).join("")}</nav>`;
+}
+
+function renderHeader(title, action = "", nav = "") {
+  const page = nav || (title === "Trips" ? "" : title.includes("Receipts") ? "receipts" : title.includes("Stores") ? "stores" : title.includes("Tags") ? "tags" : title.includes("Purchase types") ? "purchase-types" : "overview");
+  return `<header class="topbar"><button class="brand" data-action="home" aria-label="All trips"><span class="brand-mark">▲</span><span>riceball</span></button>${page ? tripNavigation(page) : ""}<div class="topbar-title">${title}</div><details class="top-actions"><summary>Actions</summary><div class="top-action-list">${action}</div></details></header>`;
+}
+
+function floatingAdd(action, label) {
+  return `<button class="floating-add" data-action="${action}" aria-label="${label}" title="${label}">+</button>`;
 }
 
 async function render() {
@@ -99,6 +109,7 @@ function renderSubpage(data, trip, page) {
     const types = data.purchaseTypes.filter((type) => type.tripId === trip.id && type.status !== "archived");
     app.innerHTML = `${renderHeader(`${escapeHtml(trip.name)} · Purchase types`, `${back}<button class="button button-primary" data-action="new-purchase-type">Add type</button>`)}<section class="page-section"><h1>Purchase types</h1>${types.length ? types.map((type) => `<article class="management-row"><span><strong>${escapeHtml(type.name)}</strong></span><button class="text-button" data-edit-purchase-type="${type.id}">Edit</button><button class="delete-button" data-delete-purchase-type="${type.id}">Delete</button></article>`).join("") : '<p class="muted">No purchase types saved for this trip.</p>'}</section>`;
   }
+  app.insertAdjacentHTML("beforeend", floatingAdd({ receipts: "new-receipt", stores: "new-store", tags: "new-tag", "purchase-types": "new-purchase-type" }[page], `Add ${page === "purchase-types" ? "purchase type" : page.slice(0, -1)}`));
   decoratePhotos();
 }
 
@@ -107,6 +118,7 @@ function renderTrips(data) {
     app.innerHTML = `${renderHeader("Trips", `${folderButton()}${backupButtons()}<button class="button button-primary" data-action="new-trip">New trip</button>`)}
     <section class="hero"><p class="eyebrow">Offline vacation shopping</p><h1>Keep the good finds, lose the paper trail.</h1><p>Trips, shopping quantities, and receipts stay in your chosen Riceball folder.</p>${fileStore.hasFolder() ? '<p class="storage-ready">Folder connected. Data saves to <code>riceball.json</code>.</p>' : '<p class="storage-warning">Choose a folder before creating data so it can be saved outside browser storage.</p>'}</section>
     <section class="section-heading"><h2>${state.showArchived ? "Archived trips" : "Active trips"}</h2><button class="text-button" data-action="toggle-archived-trips">${state.showArchived ? "Show active trips" : "Show archived trips"}</button></section><section class="controls trip-controls"><input data-trip-search type="search" value="${escapeHtml(state.tripSearch)}" placeholder="Search trips" aria-label="Search trips"></section><section class="trip-list">${visibleTrips.length ? visibleTrips.map((trip) => `<article class="trip-card"><button class="trip-card-open" data-open-trip="${trip.id}"><span class="trip-card-arrow">↗</span><span class="trip-card-name">${escapeHtml(trip.name)}</span><span>${escapeHtml(trip.currency)}</span></button>${state.showArchived ? `<button class="text-button" data-restore-trip="${trip.id}">Restore</button><button class="delete-button" data-delete-trip="${trip.id}">Delete permanently</button>` : ""}</article>`).join("") : '<div class="empty-state"><span class="empty-mark">△</span><h2>No matching trips.</h2><p>Try a different search or create a new trip.</p><button class="button button-primary" data-action="new-trip">Create trip</button></div>'}</section>`;
+  app.insertAdjacentHTML("beforeend", floatingAdd("new-trip", "Add trip"));
 }
 
 function renderTrip(data, trip) {
@@ -156,6 +168,7 @@ function renderTrip(data, trip) {
     <section class="management-section"><div class="section-heading"><h2>Purchase types</h2><button class="text-button" data-action="new-purchase-type">Add type</button></div>${tripPurchaseTypes.length ? tripPurchaseTypes.map((type) => `<article class="management-row"><span><strong>${escapeHtml(type.name)}</strong></span><button class="text-button" data-edit-purchase-type="${type.id}">Edit</button><button class="delete-button" data-delete-purchase-type="${type.id}">Delete</button></article>`).join("") : '<p class="muted">No purchase types saved for this trip.</p>'}</section>`;
   app.querySelector(".receipt-section")?.remove();
   app.querySelectorAll(".management-section").forEach((section) => section.remove());
+  app.insertAdjacentHTML("beforeend", floatingAdd("new-item", "Add item"));
   const controls = app.querySelector(".controls");
   if (controls) { const filterPanel = document.createElement("details"); filterPanel.className = "filter-panel"; filterPanel.innerHTML = "<summary>Filters</summary>"; controls.parentNode.insertBefore(filterPanel, controls); filterPanel.append(controls); }
   const columnSelect = app.querySelector("[data-columns]");
