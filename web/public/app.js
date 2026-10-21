@@ -8,7 +8,7 @@ const photoViewerDialog = document.querySelector("#photo-viewer-dialog");
 const errorOverlay = document.querySelector("#error-overlay");
 const restoreInput = document.querySelector("#restore-input");
 let darkMode = localStorage.getItem("riceball-dark-mode") !== "false";
-const state = { tripId: null, subpage: "overview", tripSearch: "", search: "", unfulfilledOnly: true, tagId: "", storeTypeTagId: "", categoryTagId: "", storeId: "", pendingReceipts: false, receiptFilterType: "", showArchived: false, columns: 4, sort: "name", sortDirection: "asc" };
+const state = { tripId: null, subpage: "overview", tripSearch: "", search: "", unfulfilledOnly: true, tagId: "", storeTypeTagId: "", categoryTagId: "", storeId: "", pendingReceipts: false, receiptFilterType: "", showArchived: false, columns: 4, sort: "name", sortDirection: "asc", assignmentTargets: { store: "", tag: "" } };
 let initialRender = true;
 const errorLog = [];
 function renderErrors() {
@@ -86,8 +86,9 @@ function floatingAdd(action, label) {
 function assignmentForm(kind, data, trip) {
   const items = data.items.filter((item) => item.tripId === trip.id && item.status !== "archived").sort((left, right) => left.name.localeCompare(right.name));
   const records = kind === "store" ? data.stores.filter((record) => record.tripId === trip.id && record.status !== "archived") : data.tags.filter((record) => record.tripId === trip.id && record.status !== "archived");
-  const itemOptions = items.map((item) => { const photo = (item.photoPaths ?? (item.photoPath ? [item.photoPath] : []))[0]; return `<label class="assignment-item" data-assignment-name="${escapeHtml(item.name.toLowerCase())}"><input type="checkbox" name="itemIds" value="${item.id}">${photo ? `<img data-photo="${escapeHtml(photo)}" alt="${escapeHtml(item.name)}">` : `<span class="assignment-placeholder">${escapeHtml(item.name.slice(0, 1).toUpperCase())}</span>`}<span>${escapeHtml(item.name)}</span></label>`; }).join("");
-  return `<form class="assignment-form" data-form="${kind}-items"><h2>Assign items to ${kind === "store" ? "a store" : "a tag"}</h2><label>${kind === "store" ? "Store" : "Tag"}<select name="targetId" required><option value="">Select ${kind}</option>${records.map((record) => `<option value="${record.id}">${escapeHtml(record.name)}</option>`).join("")}</select></label><div class="assignment-toolbar"><input data-assignment-search type="search" placeholder="Search items" aria-label="Search items"><button type="button" class="filter-icon" data-action="assignment-select-visible">Select visible</button><button type="button" class="filter-icon" data-action="assignment-deselect-visible">Deselect visible</button></div><div class="assignment-items">${itemOptions || '<span class="muted">No items available.</span>'}</div><button class="button button-primary" type="submit">Save assignments</button></form>`;
+  const selectedTarget = state.assignmentTargets[kind] ?? "";
+  const itemOptions = items.map((item) => { const photo = (item.photoPaths ?? (item.photoPath ? [item.photoPath] : []))[0]; const ids = kind === "store" ? (item.storeIds ?? []) : (item.tagIds ?? []); return `<label class="assignment-item" data-assignment-name="${escapeHtml(item.name.toLowerCase())}"><input type="checkbox" name="itemIds" value="${item.id}" ${selectedTarget && ids.includes(selectedTarget) ? "checked" : ""}>${photo ? `<img data-photo="${escapeHtml(photo)}" alt="${escapeHtml(item.name)}">` : `<span class="assignment-placeholder">${escapeHtml(item.name.slice(0, 1).toUpperCase())}</span>`}<span>${escapeHtml(item.name)}</span></label>`; }).join("");
+  return `<form class="assignment-form" data-form="${kind}-items"><h2>Assign items to ${kind === "store" ? "a store" : "a tag"}</h2><label>${kind === "store" ? "Store" : "Tag"}<select name="targetId" required><option value="">Select ${kind}</option>${records.map((record) => `<option value="${record.id}" ${selectedTarget === record.id ? "selected" : ""}>${escapeHtml(record.name)}</option>`).join("")}</select></label><div class="assignment-toolbar"><input data-assignment-search type="search" placeholder="Search items" aria-label="Search items"><button type="button" class="filter-icon" data-action="assignment-select-visible">Select visible</button><button type="button" class="filter-icon" data-action="assignment-deselect-visible">Deselect visible</button></div><div class="assignment-items">${itemOptions || '<span class="muted">No items available.</span>'}</div><button class="button button-primary" type="submit">Save assignments</button></form>`;
 }
 
 function openSortMenu() {
@@ -110,6 +111,17 @@ function compactFilterRows(controls) {
   controls.querySelector('[data-action="toggle-sort-direction"]')?.remove();
   primary.insertAdjacentHTML("beforeend", `<button class="filter-icon ${state.unfulfilledOnly ? "active" : ""}" data-action="toggle-unfulfilled" aria-label="${state.unfulfilledOnly ? "Showing unfulfilled items" : "Showing all items"}" title="${state.unfulfilledOnly ? "Showing unfulfilled items" : "Showing all items"}">${state.unfulfilledOnly ? "✅" : "⬜"}</button><button class="filter-icon" data-action="cycle-columns" aria-label="Columns: ${state.columns}" title="Columns: ${state.columns}">▦${state.columns}</button><button class="filter-icon" data-action="cycle-sort" aria-label="Sort: ${state.sort}, ${state.sortDirection}" title="Sort: ${state.sort}, ${state.sortDirection}">↕</button><button class="filter-icon" data-action="clear-filters" aria-label="Clear filters" title="Clear filters">×</button>`);
   controls.replaceChildren(primary);
+}
+
+function syncAssignmentSelection(form) {
+  const kind = form.dataset.form === "store-items" ? "store" : "tag";
+  const targetId = form.querySelector('[name="targetId"]').value;
+  state.assignmentTargets[kind] = targetId;
+  const dataPromise = load();
+  dataPromise.then((data) => {
+    const assigned = new Set(data.items.filter((item) => item.tripId === state.tripId && (kind === "store" ? (item.storeIds ?? []) : (item.tagIds ?? [])).includes(targetId)).map((item) => item.id));
+    form.querySelectorAll('input[name="itemIds"]').forEach((checkbox) => { checkbox.checked = assigned.has(checkbox.value); });
+  }).catch(reportError);
 }
 
 async function render() {
@@ -827,7 +839,8 @@ app.addEventListener("input", (event) => {
   }, 250);
 });
 app.addEventListener("change", (event) => {
-  if (event.target.closest("[data-form=\"store-items\"], [data-form=\"tag-items\"]")) return;
+  const assignmentFormElement = event.target.closest("[data-form=\"store-items\"], [data-form=\"tag-items\"]");
+  if (assignmentFormElement) { if (event.target.matches('[name="targetId"]')) syncAssignmentSelection(assignmentFormElement); return; }
   if (event.target.matches("[data-unfulfilled]")) state.unfulfilledOnly = event.target.checked;
   if (event.target.matches("[data-tag]")) state.tagId = event.target.value;
   if (event.target.matches("[data-store-type-tag]")) state.storeTypeTagId = event.target.value;
@@ -846,6 +859,7 @@ app.addEventListener("submit", async (event) => {
     const data = await load();
     const formData = new FormData(form);
     const targetId = formData.get("targetId");
+    state.assignmentTargets[form.dataset.form === "store-items" ? "store" : "tag"] = targetId;
     const itemIds = new Set(formData.getAll("itemIds"));
     for (const item of data.items.filter((candidate) => candidate.tripId === state.tripId)) {
       if (form.dataset.form === "store-items") item.storeIds = item.storeIds ?? [];
