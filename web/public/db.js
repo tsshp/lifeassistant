@@ -123,9 +123,9 @@ async function ensurePermission() {
 export const fileStore = {
   supported: "showDirectoryPicker" in window,
   hasFolder: () => folderHandle !== null && folderPermission === "granted",
-  hasSavedFolder: () => folderHandle !== null,
+  hasSavedFolder: () => Boolean(folderHandle),
   restoreFolder: async () => {
-    folderHandle = await getSetting("folderHandle");
+    folderHandle = (await getSetting("folderHandle")) ?? null;
     if (!folderHandle) return false;
     if ((await folderHandle.queryPermission({ mode: "readwrite" })) !== "granted") { folderPermission = "denied"; return false; }
     folderPermission = "granted";
@@ -135,7 +135,15 @@ export const fileStore = {
     return true;
   },
   reconnectFolder: async () => {
-    if (!folderHandle) throw new Error("No saved folder is available");
+    if (!folderHandle) {
+      if (!("showDirectoryPicker" in window)) throw new Error("No saved folder is available");
+      folderHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+      if (!(await ensurePermission())) throw new Error("Read/write permission was not granted for the selected folder");
+      await setSetting("folderHandle", folderHandle);
+      clearPhotoUrlCache();
+      dataLoaded = false;
+      return readData();
+    }
     const granted = typeof folderHandle.requestPermission === "function" ? await folderHandle.requestPermission({ mode: "readwrite" }) : "denied";
     if (granted !== "granted") {
       if (!("showDirectoryPicker" in window)) throw new Error("Read/write permission was not granted for the saved folder");
