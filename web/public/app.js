@@ -3,6 +3,7 @@ import { fileStore } from "./db.js";
 const app = document.querySelector("#app");
 const dialog = document.querySelector("#entry-dialog");
 const itemActionsDialog = document.querySelector("#item-actions-dialog");
+const sortMenuDialog = document.querySelector("#sort-menu-dialog");
 const photoViewerDialog = document.querySelector("#photo-viewer-dialog");
 const errorOverlay = document.querySelector("#error-overlay");
 const restoreInput = document.querySelector("#restore-input");
@@ -78,22 +79,26 @@ function floatingAdd(action, label) {
   return `<button class="floating-add" data-action="${action}" aria-label="${label}" title="${label}">+</button>`;
 }
 
+function openSortMenu() {
+  sortMenuDialog.innerHTML = `<form method="dialog" data-sort-form><h2>Sort items</h2><label>Order<select name="sort"><option value="name-asc">Name, ascending</option><option value="name-desc">Name, descending</option><option value="activity-asc">Recent activity, oldest first</option><option value="activity-desc">Recent activity, newest first</option><option value="remaining-asc">Remaining quantity, low to high</option><option value="remaining-desc">Remaining quantity, high to low</option></select></label><menu><button type="button" data-action="cancel-dialog">Cancel</button><button class="button button-primary" type="submit">Apply</button></menu></form>`;
+  sortMenuDialog.querySelector("[name=sort]").value = `${state.sort}-${state.sortDirection}`;
+  sortMenuDialog.showModal();
+}
+
 function removeRedundantMenuActions() {
   app.querySelectorAll('.top-action-list [data-subpage], .top-action-list [data-action="new-item"], .top-action-list [data-action="new-receipt"], .top-action-list [data-action="new-store"], .top-action-list [data-action="new-tag"], .top-action-list [data-action="new-purchase-type"]').forEach((button) => button.remove());
 }
 
 function compactFilterRows(controls) {
   const primary = document.createElement("div");
-  const secondary = document.createElement("div");
   primary.className = "filter-row filter-row-primary";
-  secondary.className = "filter-row filter-row-secondary";
   ["[data-search]", "[data-store-type-tag]", "[data-category-tag]", "[data-store]"].forEach((selector) => { const element = controls.querySelector(selector); if (element) primary.append(element); });
   controls.querySelector("[data-unfulfilled]")?.closest("label")?.remove();
   controls.querySelector("[data-sort]")?.remove();
   controls.querySelector("[data-columns]")?.remove();
   controls.querySelector('[data-action="toggle-sort-direction"]')?.remove();
-  secondary.insertAdjacentHTML("beforeend", `<button class="filter-icon ${state.unfulfilledOnly ? "active" : ""}" data-action="toggle-unfulfilled" aria-label="${state.unfulfilledOnly ? "Showing unfulfilled items" : "Showing all items"}" title="${state.unfulfilledOnly ? "Showing unfulfilled items" : "Showing all items"}">${state.unfulfilledOnly ? "✅" : "⬜"}</button><button class="filter-icon" data-action="cycle-columns" aria-label="Columns: ${state.columns}" title="Columns: ${state.columns}">▦${state.columns}</button><button class="filter-icon" data-action="cycle-sort" aria-label="Sort: ${state.sort}, ${state.sortDirection}" title="Sort: ${state.sort}, ${state.sortDirection}">↕</button><button class="filter-icon" data-action="clear-filters" aria-label="Clear filters" title="Clear filters">×</button>`);
-  controls.replaceChildren(primary, secondary);
+  primary.insertAdjacentHTML("beforeend", `<button class="filter-icon ${state.unfulfilledOnly ? "active" : ""}" data-action="toggle-unfulfilled" aria-label="${state.unfulfilledOnly ? "Showing unfulfilled items" : "Showing all items"}" title="${state.unfulfilledOnly ? "Showing unfulfilled items" : "Showing all items"}">${state.unfulfilledOnly ? "✅" : "⬜"}</button><button class="filter-icon" data-action="cycle-columns" aria-label="Columns: ${state.columns}" title="Columns: ${state.columns}">▦${state.columns}</button><button class="filter-icon" data-action="cycle-sort" aria-label="Sort: ${state.sort}, ${state.sortDirection}" title="Sort: ${state.sort}, ${state.sortDirection}">↕</button><button class="filter-icon" data-action="clear-filters" aria-label="Clear filters" title="Clear filters">×</button>`);
+  controls.replaceChildren(primary);
 }
 
 async function render() {
@@ -460,6 +465,7 @@ async function saveForm(form) {
 app.addEventListener("click", async (event) => {
   const target = event.target.closest("[data-action], [data-subpage], [data-receipt-filter], [data-remove-form-photo], [data-open-trip], [data-increment], [data-decrement], [data-delete-item], [data-edit-item], [data-edit-receipt], [data-delete-receipt], [data-edit-store], [data-delete-store], [data-edit-tag], [data-delete-tag], [data-new-purchase], [data-edit-purchase], [data-delete-purchase], [data-new-sighting], [data-edit-sighting], [data-delete-sighting], [data-edit-purchase-type], [data-delete-purchase-type], [data-review-draft], [data-move-photo-up], [data-move-photo-down], [data-restore-trip], [data-delete-trip], [data-restore-item], [data-delete-archived-item]");
   if (!target) return;
+  if (target.dataset.action === "cycle-sort" && sortLongPressTriggered) { sortLongPressTriggered = false; return; }
   if (target.dataset.receiptFilter) { state.receiptFilterType = target.dataset.receiptFilter === "__all__" ? "" : target.dataset.receiptFilter; state.pendingReceipts = false; state.subpage = "receipts"; render(); return; }
   if (target.dataset.removeFormPhoto) {
     const data = await load();
@@ -740,16 +746,21 @@ document.addEventListener("toggle", (event) => {
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".top-actions")) document.querySelectorAll(".top-actions[open]").forEach((menu) => menu.removeAttribute("open"));
   if (itemActionsDialog.open && event.target === itemActionsDialog) itemActionsDialog.close();
+  if (sortMenuDialog.open && event.target === sortMenuDialog) sortMenuDialog.close();
 }, true);
 
 let searchTimer;
 let longPressTimer;
+let sortLongPressTimer;
+let sortLongPressTriggered = false;
 app.addEventListener("pointerdown", (event) => {
+  const sortButton = event.target.closest('[data-action="cycle-sort"]');
+  if (sortButton) { sortLongPressTimer = window.setTimeout(() => { sortLongPressTriggered = true; openSortMenu(); }, 550); return; }
   const card = event.target.closest("[data-long-press-item]");
   if (!card || event.target.closest("button, input, select, textarea, a")) return;
   longPressTimer = window.setTimeout(() => openItemActions(card.dataset.longPressItem), 550);
 });
-for (const eventName of ["pointerup", "pointercancel", "pointerleave"]) app.addEventListener(eventName, () => { window.clearTimeout(longPressTimer); });
+for (const eventName of ["pointerup", "pointercancel", "pointerleave"]) app.addEventListener(eventName, () => { window.clearTimeout(longPressTimer); window.clearTimeout(sortLongPressTimer); });
 app.addEventListener("contextmenu", (event) => {
   const card = event.target.closest("[data-long-press-item]");
   if (!card || event.target.closest("button, input, select, textarea, a")) return;
@@ -811,6 +822,15 @@ app.addEventListener("change", (event) => {
 dialog.addEventListener("submit", (event) => { event.preventDefault(); saveForm(event.target).catch(reportError); });
 dialog.addEventListener("click", (event) => {
   if (event.target.closest('[data-action="cancel-dialog"]')) dialog.close();
+});
+sortMenuDialog.addEventListener("submit", (event) => {
+  event.preventDefault();
+  [state.sort, state.sortDirection] = new FormData(event.target).get("sort").split("-");
+  sortMenuDialog.close();
+  render();
+});
+sortMenuDialog.addEventListener("click", (event) => {
+  if (event.target.closest('[data-action="cancel-dialog"]')) sortMenuDialog.close();
 });
 restoreInput.addEventListener("change", async () => {
   const file = restoreInput.files?.[0];
