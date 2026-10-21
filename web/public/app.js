@@ -7,12 +7,16 @@ const sortMenuDialog = document.querySelector("#sort-menu-dialog");
 const photoViewerDialog = document.querySelector("#photo-viewer-dialog");
 const errorOverlay = document.querySelector("#error-overlay");
 const restoreInput = document.querySelector("#restore-input");
+let darkMode = localStorage.getItem("riceball-dark-mode") !== "false";
 const state = { tripId: null, subpage: "overview", tripSearch: "", search: "", unfulfilledOnly: true, tagId: "", storeTypeTagId: "", categoryTagId: "", storeId: "", pendingReceipts: false, receiptFilterType: "", showArchived: false, columns: 4, sort: "name", sortDirection: "asc" };
 let initialRender = true;
 const errorLog = [];
 function renderErrors() {
   errorOverlay.hidden = errorLog.length === 0 || errorOverlay.dataset.closed === "true";
   errorOverlay.innerHTML = `<div class="error-overlay-header"><strong>Riceball errors (${errorLog.length})</strong><button type="button" data-close-errors aria-label="Close errors">×</button></div><div class="error-list">${errorLog.slice().reverse().map((entry) => `<article><time>${escapeHtml(entry.time)}</time><p>${escapeHtml(entry.message)}</p></article>`).join("")}</div>`;
+}
+function applyTheme() {
+  document.body.classList.toggle("dark-mode", darkMode);
 }
 function reportError(error) {
   const message = error instanceof Error ? error.message : String(error);
@@ -72,7 +76,7 @@ function tripNavigation(page) {
 
 function renderHeader(title, action = "", nav = "") {
   const page = nav || (title === "Trips" ? "" : title.includes("Receipts") ? "receipts" : title.includes("Stores") ? "stores" : title.includes("Tags") ? "tags" : title.includes("Purchase types") ? "purchase-types" : "overview");
-  return `<header class="topbar"><button class="brand" data-action="home" aria-label="All trips"><span class="brand-mark">▲</span><span>riceball</span></button>${page ? tripNavigation(page) : ""}<div class="topbar-title">${title}</div><details class="top-actions"><summary>Actions</summary><div class="top-action-list">${action}</div></details></header>`;
+  return `<header class="topbar"><button class="brand" data-action="home" aria-label="All trips"><span class="brand-mark">▲</span><span>riceball</span></button>${page ? tripNavigation(page) : ""}<div class="topbar-title">${title}</div><details class="top-actions"><summary>Actions</summary><div class="top-action-list"><button class="button" data-action="toggle-dark-mode">${darkMode ? "Light mode" : "Dark mode"}</button>${action}</div></details></header>`;
 }
 
 function floatingAdd(action, label) {
@@ -532,6 +536,7 @@ app.addEventListener("click", async (event) => {
   if (target.dataset.action === "toggle-pending-receipts") { state.pendingReceipts = !state.pendingReceipts; state.subpage = "receipts"; render(); return; }
   if (target.dataset.action === "toggle-sort-direction") { state.sortDirection = state.sortDirection === "asc" ? "desc" : "asc"; load().then((data) => { data.preferences.sortDirection = state.sortDirection; return fileStore.save(data); }).then(render).catch(reportError); return; }
   if (target.dataset.action === "clear-filters") { state.search = ""; state.tagId = ""; state.storeTypeTagId = ""; state.categoryTagId = ""; state.storeId = ""; state.unfulfilledOnly = true; state.columns = 4; state.sort = "name"; state.sortDirection = "asc"; render(); return; }
+  if (target.dataset.action === "toggle-dark-mode") { darkMode = !darkMode; localStorage.setItem("riceball-dark-mode", String(darkMode)); applyTheme(); render(); return; }
   if (target.dataset.action === "toggle-unfulfilled") { state.unfulfilledOnly = !state.unfulfilledOnly; render(); return; }
   if (target.dataset.action === "cycle-columns") { state.columns = state.columns >= 5 ? 1 : state.columns + 1; render(); return; }
   if (target.dataset.action === "cycle-sort") { const options = [["name", "asc"], ["name", "desc"], ["activity", "asc"], ["activity", "desc"], ["remaining", "asc"], ["remaining", "desc"]]; const index = options.findIndex(([sort, direction]) => sort === state.sort && direction === state.sortDirection); [state.sort, state.sortDirection] = options[(index + 1) % options.length]; render(); return; }
@@ -873,6 +878,7 @@ restoreInput.addEventListener("change", async () => {
   restoreInput.value = "";
 });
 
+applyTheme();
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js");
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") { finalizeQuickPurchases().then(() => fileStore.flush()).catch(reportError); } });
 window.addEventListener("pagehide", () => { fileStore.flush().catch(reportError); });
