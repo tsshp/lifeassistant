@@ -8,6 +8,8 @@ function normalizeData(value) {
   const defaults = emptyData();
   const source = value && typeof value === "object" ? value : {};
   const normalized = { ...defaults, ...source, preferences: { ...defaults.preferences, ...(source.preferences ?? {}) } };
+  normalized.preferences.sort = "name";
+  normalized.preferences.sortDirection = "asc";
   if ((source.version ?? 0) < 3) { normalized.version = 3; normalized.preferences.columns = 4; }
   return normalized;
 }
