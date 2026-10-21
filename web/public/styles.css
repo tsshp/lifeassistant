@@ -71,3 +71,5 @@ body.dark-mode { color: var(--ink); background: #000; }.dark-mode .topbar, .dark
 .assignment-form .assignment-item { width: 8rem; height: 8rem; aspect-ratio: 1; }
 .assignment-form .assignment-item > img { position: absolute !important; inset: 0 !important; display: block !important; width: 100% !important; height: 100% !important; object-fit: cover; }
 .assignment-form .assignment-item[hidden] { display: none !important; }
+.columns-1 .photo-frame, .columns-1 .photo-frame .photo-gallery, .columns-1 .photo-frame .item-art, .columns-1 .photo-frame .item-photo { height: 16rem; }.columns-2 .photo-frame, .columns-2 .photo-frame .photo-gallery, .columns-2 .photo-frame .item-art, .columns-2 .photo-frame .item-photo { height: 10rem; }.columns-3 .photo-frame, .columns-3 .photo-frame .photo-gallery, .columns-3 .photo-frame .item-art, .columns-3 .photo-frame .item-photo { height: 8rem; }
+@media (max-width: 620px) { .columns-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
