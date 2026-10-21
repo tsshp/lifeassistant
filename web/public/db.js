@@ -12,6 +12,7 @@ function normalizeData(value) {
   return normalized;
 }
 let folderHandle = null;
+let folderPermission = "unknown";
 let data = emptyData();
 let dataLoaded = false;
 const photoUrlCache = new Map();
@@ -20,6 +21,35 @@ let writeTimer = null;
 let writeQueue = Promise.resolve();
 let lastWriteError = null;
 let errorHandler = () => {};
+const settingsDbName = "riceball-settings";
+const settingsStoreName = "settings";
+
+function openSettingsDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(settingsDbName, 1);
+    request.onupgradeneeded = () => request.result.createObjectStore(settingsStoreName);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function getSetting(key) {
+  const db = await openSettingsDb();
+  return new Promise((resolve, reject) => {
+    const request = db.transaction(settingsStoreName, "readonly").objectStore(settingsStoreName).get(key);
+    request.onsuccess = () => { db.close(); resolve(request.result); };
+    request.onerror = () => { db.close(); reject(request.error); };
+  });
+}
+
+async function setSetting(key, value) {
+  const db = await openSettingsDb();
+  return new Promise((resolve, reject) => {
+    const request = db.transaction(settingsStoreName, "readwrite").objectStore(settingsStoreName).put(value, key);
+    request.onsuccess = () => { db.close(); resolve(); };
+    request.onerror = () => { db.close(); reject(request.error); };
+  });
+}
 
 function clearPhotoUrlCache() {
   for (const url of photoUrlCache.values()) URL.revokeObjectURL(url);
@@ -85,17 +115,38 @@ async function flushWrites() {
 
 async function ensurePermission() {
   if (!folderHandle) return false;
-  if ((await folderHandle.queryPermission({ mode: "readwrite" })) === "granted") return true;
-  return (await folderHandle.requestPermission({ mode: "readwrite" })) === "granted";
+  if ((await folderHandle.queryPermission({ mode: "readwrite" })) === "granted") { folderPermission = "granted"; return true; }
+  folderPermission = (await folderHandle.requestPermission({ mode: "readwrite" })) === "granted" ? "granted" : "denied";
+  return folderPermission === "granted";
 }
 
 export const fileStore = {
   supported: "showDirectoryPicker" in window,
-  hasFolder: () => folderHandle !== null,
+  hasFolder: () => folderHandle !== null && folderPermission === "granted",
+  hasSavedFolder: () => folderHandle !== null,
+  restoreFolder: async () => {
+    folderHandle = await getSetting("folderHandle");
+    if (!folderHandle) return false;
+    if ((await folderHandle.queryPermission({ mode: "readwrite" })) !== "granted") { folderPermission = "denied"; return false; }
+    folderPermission = "granted";
+    clearPhotoUrlCache();
+    dataLoaded = false;
+    await readData();
+    return true;
+  },
+  reconnectFolder: async () => {
+    if (!folderHandle || !(await ensurePermission())) throw new Error("Read/write permission was not granted for the saved folder");
+    clearPhotoUrlCache();
+    dataLoaded = false;
+    return readData();
+  },
+  getLastTripId: () => getSetting("lastTripId"),
+  setLastTripId: (tripId) => setSetting("lastTripId", tripId),
   chooseFolder: async () => {
     if (!("showDirectoryPicker" in window)) throw new Error("This browser does not support folder access. Use Chrome or Edge on Android/desktop.");
     folderHandle = await window.showDirectoryPicker({ mode: "readwrite" });
     if (!(await ensurePermission())) throw new Error("Read/write permission was not granted for the selected folder");
+    await setSetting("folderHandle", folderHandle);
     clearPhotoUrlCache();
     dataLoaded = false;
     await readData();

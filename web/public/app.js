@@ -7,6 +7,7 @@ const photoViewerDialog = document.querySelector("#photo-viewer-dialog");
 const errorOverlay = document.querySelector("#error-overlay");
 const restoreInput = document.querySelector("#restore-input");
 const state = { tripId: null, subpage: "overview", tripSearch: "", search: "", unfulfilledOnly: true, tagId: "", storeTypeTagId: "", categoryTagId: "", storeId: "", pendingReceipts: false, receiptFilterType: "", showArchived: false, columns: 4, sort: "activity", sortDirection: "desc" };
+let initialRender = true;
 const errorLog = [];
 function renderErrors() {
   errorOverlay.hidden = errorLog.length === 0 || errorOverlay.dataset.closed === "true";
@@ -37,7 +38,7 @@ async function finalizeQuickPurchases() {
 
 const timestamp = () => new Date().toISOString();
 const identifier = () => crypto.randomUUID();
-const folderButton = () => `<button class="button ${fileStore.hasFolder() ? "" : "button-primary"}" data-action="choose-folder">${fileStore.hasFolder() ? "Riceball folder" : "Choose folder"}</button>`;
+const folderButton = () => `<button class="button ${fileStore.hasFolder() ? "" : "button-primary"}" data-action="choose-folder">${fileStore.hasFolder() ? "Riceball folder" : fileStore.hasSavedFolder() ? "Reconnect folder" : "Choose folder"}</button>`;
 const backupButtons = () => `<button class="button" data-action="export-data">Export JSON</button><button class="button" data-action="backup-folder">Copy folder backup</button><button class="button" data-action="import-data">Restore JSON</button>`;
 
 function escapeHtml(value) {
@@ -69,6 +70,11 @@ function renderHeader(title, action = "") {
 
 async function render() {
   const data = await load();
+  if (initialRender) {
+    const savedTripId = await fileStore.getLastTripId();
+    state.tripId = data.trips.some((trip) => trip.id === savedTripId && trip.status !== "archived") ? savedTripId : data.trips.find((trip) => trip.status !== "archived")?.id ?? null;
+    initialRender = false;
+  }
   const trip = data.trips.find((candidate) => candidate.id === state.tripId && candidate.status !== "archived");
   if (!trip) {
     state.tripId = null;
@@ -148,6 +154,8 @@ function renderTrip(data, trip) {
     <section class="management-section"><div class="section-heading"><h2>Stores</h2><button class="text-button" data-action="new-store">Add store</button></div>${tripStores.length ? tripStores.map((store) => `<article class="management-row"><span><strong>${escapeHtml(store.name)}</strong><small>${escapeHtml(store.notes ?? "")}</small></span><button class="text-button" data-edit-store="${store.id}">Edit</button><button class="delete-button" data-delete-store="${store.id}">Delete</button></article>`).join("") : '<p class="muted">No stores saved for this trip.</p>'}</section>
     <section class="management-section"><div class="section-heading"><h2>Tags</h2><button class="text-button" data-action="new-tag">Add tag</button></div>${tripTags.length ? tripTags.map((tag) => `<article class="management-row"><span><strong>${escapeHtml(tag.name)}</strong><small>${escapeHtml(tag.kind)}</small></span><button class="text-button" data-edit-tag="${tag.id}">Edit</button><button class="delete-button" data-delete-tag="${tag.id}">Delete</button></article>`).join("") : '<p class="muted">No tags saved for this trip.</p>'}</section>
     <section class="management-section"><div class="section-heading"><h2>Purchase types</h2><button class="text-button" data-action="new-purchase-type">Add type</button></div>${tripPurchaseTypes.length ? tripPurchaseTypes.map((type) => `<article class="management-row"><span><strong>${escapeHtml(type.name)}</strong></span><button class="text-button" data-edit-purchase-type="${type.id}">Edit</button><button class="delete-button" data-delete-purchase-type="${type.id}">Delete</button></article>`).join("") : '<p class="muted">No purchase types saved for this trip.</p>'}</section>`;
+  app.querySelector(".receipt-section")?.remove();
+  app.querySelectorAll(".management-section").forEach((section) => section.remove());
   const controls = app.querySelector(".controls");
   if (controls) { const filterPanel = document.createElement("details"); filterPanel.className = "filter-panel"; filterPanel.innerHTML = "<summary>Filters</summary>"; controls.parentNode.insertBefore(filterPanel, controls); filterPanel.append(controls); }
   const columnSelect = app.querySelector("[data-columns]");
@@ -413,7 +421,7 @@ async function saveForm(form) {
 }
 
 app.addEventListener("click", async (event) => {
-  const target = event.target.closest("[data-action], [data-receipt-filter], [data-remove-form-photo], [data-open-trip], [data-increment], [data-decrement], [data-delete-item], [data-edit-item], [data-edit-receipt], [data-delete-receipt], [data-edit-store], [data-delete-store], [data-edit-tag], [data-delete-tag], [data-new-purchase], [data-edit-purchase], [data-delete-purchase], [data-new-sighting], [data-edit-sighting], [data-delete-sighting], [data-edit-purchase-type], [data-delete-purchase-type], [data-review-draft], [data-move-photo-up], [data-move-photo-down], [data-restore-trip], [data-delete-trip], [data-restore-item], [data-delete-archived-item]");
+  const target = event.target.closest("[data-action], [data-subpage], [data-receipt-filter], [data-remove-form-photo], [data-open-trip], [data-increment], [data-decrement], [data-delete-item], [data-edit-item], [data-edit-receipt], [data-delete-receipt], [data-edit-store], [data-delete-store], [data-edit-tag], [data-delete-tag], [data-new-purchase], [data-edit-purchase], [data-delete-purchase], [data-new-sighting], [data-edit-sighting], [data-delete-sighting], [data-edit-purchase-type], [data-delete-purchase-type], [data-review-draft], [data-move-photo-up], [data-move-photo-down], [data-restore-trip], [data-delete-trip], [data-restore-item], [data-delete-archived-item]");
   if (!target) return;
   if (target.dataset.receiptFilter) { state.receiptFilterType = target.dataset.receiptFilter === "__all__" ? "" : target.dataset.receiptFilter; state.pendingReceipts = false; state.subpage = "receipts"; render(); return; }
   if (target.dataset.removeFormPhoto) {
@@ -435,11 +443,12 @@ app.addEventListener("click", async (event) => {
   }
   if (target.dataset.action === "choose-folder") {
     try {
-      const data = await fileStore.chooseFolder();
+      const data = fileStore.hasSavedFolder() ? await fileStore.reconnectFolder() : await fileStore.chooseFolder();
       state.columns = Number(data.preferences?.columns ?? state.columns);
       state.sort = data.preferences?.sort ?? state.sort;
       state.sortDirection = data.preferences?.sortDirection ?? state.sortDirection;
-      state.tripId = null;
+      state.tripId = data.trips.find((trip) => trip.status !== "archived")?.id ?? null;
+      await fileStore.setLastTripId(state.tripId);
       render();
     } catch (error) { reportError(error); }
     return;
@@ -462,7 +471,7 @@ app.addEventListener("click", async (event) => {
     try { await fileStore.backupToFolder(); window.alert("Riceball folder backup completed."); } catch (error) { reportError(error); }
     return;
   }
-  if (target.dataset.openTrip) { state.tripId = target.dataset.openTrip; state.subpage = "overview"; state.showArchived = false; render(); return; }
+  if (target.dataset.openTrip) { state.tripId = target.dataset.openTrip; state.subpage = "overview"; state.showArchived = false; fileStore.setLastTripId(state.tripId).catch(reportError); render(); return; }
   if (target.dataset.action === "home") { state.tripId = null; state.subpage = "overview"; state.tripSearch = ""; state.showArchived = false; render(); return; }
   if (target.dataset.subpage) { state.subpage = target.dataset.subpage; state.pendingReceipts = false; render(); return; }
   if (target.dataset.action === "toggle-archived-trips") { state.showArchived = !state.showArchived; state.tripId = null; render(); return; }
@@ -762,4 +771,4 @@ restoreInput.addEventListener("change", async () => {
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js");
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") { finalizeQuickPurchases().then(() => fileStore.flush()).catch(reportError); } });
 window.addEventListener("pagehide", () => { fileStore.flush().catch(reportError); });
-render();
+fileStore.restoreFolder().catch(reportError).finally(() => render().catch(reportError));
