@@ -86,7 +86,7 @@ function floatingAdd(action, label) {
 function assignmentForm(kind, data, trip) {
   const items = data.items.filter((item) => item.tripId === trip.id && item.status !== "archived").sort((left, right) => left.name.localeCompare(right.name));
   const records = kind === "store" ? data.stores.filter((record) => record.tripId === trip.id && record.status !== "archived") : data.tags.filter((record) => record.tripId === trip.id && record.status !== "archived");
-  const itemOptions = items.map((item) => `<label class="assignment-item"><input type="checkbox" name="itemIds" value="${item.id}"><span>${escapeHtml(item.name)}</span></label>`).join("");
+  const itemOptions = items.map((item) => { const photo = (item.photoPaths ?? (item.photoPath ? [item.photoPath] : []))[0]; return `<label class="assignment-item"><input type="checkbox" name="itemIds" value="${item.id}">${photo ? `<img data-photo="${escapeHtml(photo)}" alt="${escapeHtml(item.name)}">` : `<span class="assignment-placeholder">${escapeHtml(item.name.slice(0, 1).toUpperCase())}</span>`}<span>${escapeHtml(item.name)}</span></label>`; }).join("");
   return `<form class="assignment-form" data-form="${kind}-items"><h2>Assign items to ${kind === "store" ? "a store" : "a tag"}</h2><label>${kind === "store" ? "Store" : "Tag"}<select name="targetId" required><option value="">Select ${kind}</option>${records.map((record) => `<option value="${record.id}">${escapeHtml(record.name)}</option>`).join("")}</select></label><div class="assignment-items"><strong>Shopping-list items</strong>${itemOptions || '<span class="muted">No items available.</span>'}</div><button class="button button-primary" type="submit">Save assignments</button></form>`;
 }
 
@@ -502,8 +502,8 @@ app.addEventListener("click", async (event) => {
     try {
       const data = fileStore.hasSavedFolder() ? await fileStore.reconnectFolder() : await fileStore.chooseFolder();
       state.columns = Number(data.preferences?.columns ?? state.columns);
-      state.sort = data.preferences?.sort ?? state.sort;
-      state.sortDirection = data.preferences?.sortDirection ?? state.sortDirection;
+      state.sort = "name";
+      state.sortDirection = "asc";
       state.tripId = data.trips.find((trip) => trip.status !== "archived")?.id ?? null;
       await fileStore.setLastTripId(state.tripId);
       render();
@@ -825,6 +825,7 @@ app.addEventListener("input", (event) => {
   }, 250);
 });
 app.addEventListener("change", (event) => {
+  if (event.target.closest("[data-form=\"store-items\"], [data-form=\"tag-items\"]")) return;
   if (event.target.matches("[data-unfulfilled]")) state.unfulfilledOnly = event.target.checked;
   if (event.target.matches("[data-tag]")) state.tagId = event.target.value;
   if (event.target.matches("[data-store-type-tag]")) state.storeTypeTagId = event.target.value;
