@@ -880,6 +880,7 @@ app.addEventListener("submit", async (event) => {
     const itemIds = new Set(formData.getAll("itemIds"));
     for (const item of data.items.filter((candidate) => candidate.tripId === state.tripId)) {
       if (form.dataset.form === "store-items") item.storeIds = item.storeIds ?? [];
+      else item.tagIds = item.tagIds ?? [];
       const ids = form.dataset.form === "store-items" ? item.storeIds : item.tagIds;
       if (itemIds.has(item.id)) { if (!ids.includes(targetId)) ids.push(targetId); }
       else { while (ids.includes(targetId)) ids.splice(ids.indexOf(targetId), 1); }
