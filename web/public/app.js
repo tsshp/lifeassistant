@@ -554,7 +554,7 @@ app.addEventListener("click", async (event) => {
   if (target.dataset.action === "toggle-pending-receipts") { state.pendingReceipts = !state.pendingReceipts; state.subpage = "receipts"; render(); return; }
   if (target.dataset.action === "toggle-sort-direction") { state.sortDirection = state.sortDirection === "asc" ? "desc" : "asc"; load().then((data) => { data.preferences.sortDirection = state.sortDirection; return fileStore.save(data); }).then(render).catch(reportError); return; }
   if (target.dataset.action === "clear-filters") { state.search = ""; state.tagId = ""; state.storeTypeTagId = ""; state.categoryTagId = ""; state.storeId = ""; state.unfulfilledOnly = true; state.columns = 4; state.sort = "name"; state.sortDirection = "asc"; render(); return; }
-  if (target.dataset.action === "assignment-select-visible" || target.dataset.action === "assignment-deselect-visible") { const form = target.closest("[data-form]"); form?.querySelectorAll(".assignment-item:not([hidden]) input[name=itemIds]").forEach((checkbox) => { checkbox.checked = target.dataset.action === "assignment-select-visible"; }); return; }
+  if (target.dataset.action === "assignment-select-visible" || target.dataset.action === "assignment-deselect-visible") { event.preventDefault(); const form = target.closest("[data-form]"); form?.querySelectorAll(".assignment-item").forEach((tile) => { if (!tile.hidden) tile.querySelector('input[name="itemIds"]').checked = target.dataset.action === "assignment-select-visible"; }); return; }
   if (target.dataset.action === "toggle-dark-mode") { darkMode = !darkMode; localStorage.setItem("riceball-dark-mode", String(darkMode)); applyTheme(); render(); return; }
   if (target.dataset.action === "toggle-unfulfilled") { state.unfulfilledOnly = !state.unfulfilledOnly; render(); return; }
   if (target.dataset.action === "cycle-columns") { state.columns = state.columns >= 5 ? 1 : state.columns + 1; render(); return; }
@@ -843,6 +843,9 @@ app.addEventListener("input", (event) => {
       render();
     } catch (error) { reportError(error); }
   }, 250);
+});
+app.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && event.target.matches("[data-assignment-search]")) event.preventDefault();
 });
 app.addEventListener("change", (event) => {
   const assignmentFormElement = event.target.closest("[data-form=\"store-items\"], [data-form=\"tag-items\"]");
