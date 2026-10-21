@@ -70,3 +70,4 @@ body.dark-mode { color: var(--ink); background: #000; }.dark-mode .topbar, .dark
 .assignment-items { grid-template-columns: repeat(auto-fill, 8rem); justify-content: start; }
 .assignment-form .assignment-item { width: 8rem; height: 8rem; aspect-ratio: 1; }
 .assignment-form .assignment-item > img { position: absolute !important; inset: 0 !important; display: block !important; width: 100% !important; height: 100% !important; object-fit: cover; }
+.assignment-form .assignment-item[hidden] { display: none !important; }
