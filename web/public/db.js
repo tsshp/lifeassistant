@@ -57,7 +57,7 @@ function clearPhotoUrlCache() {
 }
 
 async function readData() {
-  if (!folderHandle) return data;
+  if (!folderHandle || folderPermission !== "granted") return data;
   if (dataLoaded) return data;
   try {
     const fileHandle = await folderHandle.getFileHandle("riceball.json");

@@ -709,6 +709,10 @@ document.addEventListener("toggle", (event) => {
   menu.style.top = `${Math.min(triggerBox.bottom + 6, window.innerHeight - menu.offsetHeight - 8)}px`;
   menu.style.left = `${Math.max(8, Math.min(triggerBox.left, window.innerWidth - menu.offsetWidth - 8))}px`;
 }, true);
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".top-actions")) document.querySelectorAll(".top-actions[open]").forEach((menu) => menu.removeAttribute("open"));
+  if (itemActionsDialog.open && event.target === itemActionsDialog) itemActionsDialog.close();
+}, true);
 
 let searchTimer;
 let longPressTimer;
