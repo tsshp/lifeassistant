@@ -135,7 +135,16 @@ export const fileStore = {
     return true;
   },
   reconnectFolder: async () => {
-    if (!folderHandle || !(await ensurePermission())) throw new Error("Read/write permission was not granted for the saved folder");
+    if (!folderHandle) throw new Error("No saved folder is available");
+    const granted = typeof folderHandle.requestPermission === "function" ? await folderHandle.requestPermission({ mode: "readwrite" }) : "denied";
+    if (granted !== "granted") {
+      if (!("showDirectoryPicker" in window)) throw new Error("Read/write permission was not granted for the saved folder");
+      folderHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+      if (!(await ensurePermission())) throw new Error("Read/write permission was not granted for the selected folder");
+      await setSetting("folderHandle", folderHandle);
+    } else {
+      folderPermission = "granted";
+    }
     clearPhotoUrlCache();
     dataLoaded = false;
     return readData();
