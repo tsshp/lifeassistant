@@ -87,7 +87,7 @@ function assignmentForm(kind, data, trip) {
   const items = data.items.filter((item) => item.tripId === trip.id && item.status !== "archived").sort((left, right) => left.name.localeCompare(right.name));
   const records = kind === "store" ? data.stores.filter((record) => record.tripId === trip.id && record.status !== "archived") : data.tags.filter((record) => record.tripId === trip.id && record.status !== "archived");
   const selectedTarget = state.assignmentTargets[kind] ?? "";
-  const itemOptions = items.map((item) => { const photo = (item.photoPaths ?? (item.photoPath ? [item.photoPath] : []))[0]; const ids = kind === "store" ? (item.storeIds ?? []) : (item.tagIds ?? []); return `<label class="assignment-item" data-assignment-name="${escapeHtml(item.name.toLowerCase())}"><input type="checkbox" name="itemIds" value="${item.id}" ${selectedTarget && ids.includes(selectedTarget) ? "checked" : ""}>${photo ? `<img data-photo="${escapeHtml(photo)}" alt="${escapeHtml(item.name)}">` : `<span class="assignment-placeholder">${escapeHtml(item.name.slice(0, 1).toUpperCase())}</span>`}<span>${escapeHtml(item.name)}</span></label>`; }).join("");
+  const itemOptions = items.map((item) => { const photo = (item.photoPaths ?? (item.photoPath ? [item.photoPath] : []))[0]; const ids = kind === "store" ? (item.storeIds ?? []) : (item.tagIds ?? []); return `<label class="assignment-item" data-assignment-name="${escapeHtml(item.name.toLowerCase())}"><input type="checkbox" name="itemIds" value="${item.id}" ${selectedTarget && ids.includes(selectedTarget) ? "checked" : ""}>${photo ? `<img loading="lazy" data-photo="${escapeHtml(photo)}" alt="${escapeHtml(item.name)}">` : `<span class="assignment-placeholder">${escapeHtml(item.name.slice(0, 1).toUpperCase())}</span>`}<span>${escapeHtml(item.name)}</span></label>`; }).join("");
   return `<form class="assignment-form" data-form="${kind}-items"><h2>Assign items to ${kind === "store" ? "a store" : "a tag"}</h2><label>${kind === "store" ? "Store" : "Tag"}<select name="targetId" required><option value="">Select ${kind}</option>${records.map((record) => `<option value="${record.id}" ${selectedTarget === record.id ? "selected" : ""}>${escapeHtml(record.name)}</option>`).join("")}</select></label><div class="assignment-toolbar"><input data-assignment-search type="search" placeholder="Search items" aria-label="Search items"><button type="button" class="filter-icon" data-action="assignment-select-visible">Select visible</button><button type="button" class="filter-icon" data-action="assignment-deselect-visible">Deselect visible</button></div><div class="assignment-items">${itemOptions || '<span class="muted">No items available.</span>'}</div><button class="button button-primary" type="submit">Save assignments</button></form>`;
 }
 
@@ -239,15 +239,21 @@ function itemCard(item, purchases, data) {
   const lifecycle = state.showArchived ? `<button class="text-button" data-restore-item="${item.id}">Restore</button><button class="delete-button" data-delete-archived-item="${item.id}">Delete permanently</button>` : "";
   const photoPaths = item.photoPaths ?? (item.photoPath ? [item.photoPath] : []);
   const stepper = state.showArchived ? "" : `<div class="item-stepper"><button data-decrement="${item.id}" aria-label="Decrease ${escapeHtml(item.name)}">−</button><strong>${progress.bought}</strong><button data-increment="${item.id}" aria-label="Increase ${escapeHtml(item.name)}">+</button></div>`;
-  const photoFrame = photoPaths.length ? `<div class="photo-frame"><div class="photo-gallery">${photoPaths.map((path) => `<img class="item-photo" data-photo="${escapeHtml(path)}" data-view-photo="${escapeHtml(path)}" alt="${escapeHtml(item.name)}">`).join("")}</div></div>` : `<div class="photo-frame"><div class="item-art"><span>${escapeHtml(item.name.slice(0, 1).toUpperCase())}</span></div></div>`;
+  const photoFrame = photoPaths.length ? `<div class="photo-frame"><div class="photo-gallery">${photoPaths.map((path) => `<img loading="lazy" class="item-photo" data-photo="${escapeHtml(path)}" data-view-photo="${escapeHtml(path)}" alt="${escapeHtml(item.name)}">`).join("")}</div></div>` : `<div class="photo-frame"><div class="item-art"><span>${escapeHtml(item.name.slice(0, 1).toUpperCase())}</span></div></div>`;
   const statusText = `${progress.bought}/${item.desiredQuantity}${progress.bought > item.desiredQuantity ? ` · +${progress.bought - item.desiredQuantity}` : ""}`;
   return `<article class="item-card" data-long-press-item="${item.id}">${photoFrame}${stepper}<div class="item-content"><h3 title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</h3><p class="item-status">${statusText}</p>${history.map((purchase) => `<div class="purchase-line"><span>${purchase.quantity} purchased${purchase.totalMinor == null ? "" : ` · ${formatMoney(purchase.totalMinor, data.trips.find((trip) => trip.id === item.tripId)?.currency ?? "USD")}`}</span><button class="text-button" data-edit-purchase="${purchase.id}">Edit</button><button class="delete-button" data-delete-purchase="${purchase.id}">Delete</button></div>`).join("")}${sightings.map((sighting) => `<div class="purchase-line"><span>Price ${formatMoney(sighting.packagePriceMinor, data.trips.find((trip) => trip.id === item.tripId)?.currency ?? "USD")} / ${sighting.packageQuantity} = ${formatMoney(sighting.comparableMinor, data.trips.find((trip) => trip.id === item.tripId)?.currency ?? "USD")} each</span><button class="text-button" data-edit-sighting="${sighting.id}">Edit</button><button class="delete-button" data-delete-sighting="${sighting.id}">Delete</button></div>`).join("")}${lifecycle}</div></article>`;
 }
 
 async function decoratePhotos() {
-  await Promise.all([...app.querySelectorAll("[data-photo]")].map(async (image) => {
-    try { image.src = await fileStore.photoUrl(image.dataset.photo); } catch { image.remove(); }
-  }));
+  const images = [...app.querySelectorAll("[data-photo]")];
+  let nextIndex = 0;
+  async function loadNext() {
+    while (nextIndex < images.length) {
+      const image = images[nextIndex++];
+      try { image.src = await fileStore.photoUrl(image.dataset.photo); } catch { image.remove(); }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(4, images.length) }, () => loadNext()));
 }
 
 function openItemActions(itemId) {
