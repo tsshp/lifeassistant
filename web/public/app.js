@@ -79,6 +79,13 @@ function floatingAdd(action, label) {
   return `<button class="floating-add" data-action="${action}" aria-label="${label}" title="${label}">+</button>`;
 }
 
+function assignmentForm(kind, data, trip) {
+  const items = data.items.filter((item) => item.tripId === trip.id && item.status !== "archived").sort((left, right) => left.name.localeCompare(right.name));
+  const records = kind === "store" ? data.stores.filter((record) => record.tripId === trip.id && record.status !== "archived") : data.tags.filter((record) => record.tripId === trip.id && record.status !== "archived");
+  const itemOptions = items.map((item) => `<label class="assignment-item"><input type="checkbox" name="itemIds" value="${item.id}"><span>${escapeHtml(item.name)}</span></label>`).join("");
+  return `<form class="assignment-form" data-form="${kind}-items"><h2>Assign items to ${kind === "store" ? "a store" : "a tag"}</h2><label>${kind === "store" ? "Store" : "Tag"}<select name="targetId" required><option value="">Select ${kind}</option>${records.map((record) => `<option value="${record.id}">${escapeHtml(record.name)}</option>`).join("")}</select></label><div class="assignment-items"><strong>Shopping-list items</strong>${itemOptions || '<span class="muted">No items available.</span>'}</div><button class="button button-primary" type="submit">Save assignments</button></form>`;
+}
+
 function openSortMenu() {
   sortMenuDialog.innerHTML = `<form method="dialog" data-sort-form><h2>Sort items</h2><label>Order<select name="sort"><option value="name-asc">Name, ascending</option><option value="name-desc">Name, descending</option><option value="activity-asc">Recent activity, oldest first</option><option value="activity-desc">Recent activity, newest first</option><option value="remaining-asc">Remaining quantity, low to high</option><option value="remaining-desc">Remaining quantity, high to low</option></select></label><menu><button type="button" data-action="cancel-dialog">Cancel</button><button class="button button-primary" type="submit">Apply</button></menu></form>`;
   sortMenuDialog.querySelector("[name=sort]").value = `${state.sort}-${state.sortDirection}`;
@@ -128,9 +135,11 @@ function renderSubpage(data, trip, page) {
   } else if (page === "stores") {
     const stores = data.stores.filter((store) => store.tripId === trip.id && store.status !== "archived");
     app.innerHTML = `${renderHeader(`${escapeHtml(trip.name)} · Stores`, `${back}<button class="button button-primary" data-action="new-store">Add store</button>`)}<section class="page-section"><h1>Stores</h1>${stores.length ? stores.map((store) => `<article class="management-row"><span><strong>${escapeHtml(store.name)}</strong><small>${escapeHtml(store.notes ?? "")}</small></span><button class="text-button" data-edit-store="${store.id}">Edit</button><button class="delete-button" data-delete-store="${store.id}">Delete</button></article>`).join("") : '<p class="muted">No stores saved for this trip.</p>'}</section>`;
+    app.insertAdjacentHTML("beforeend", assignmentForm("store", data, trip));
   } else if (page === "tags") {
     const tags = data.tags.filter((tag) => tag.tripId === trip.id && tag.status !== "archived");
     app.innerHTML = `${renderHeader(`${escapeHtml(trip.name)} · Tags`, `${back}<button class="button button-primary" data-action="new-tag">Add tag</button>`)}<section class="page-section"><h1>Tags</h1>${tags.length ? tags.map((tag) => `<article class="management-row"><span><strong>${escapeHtml(tag.name)}</strong><small>${escapeHtml(tag.kind)}${tag.parentId ? " · child tag" : ""}</small></span><button class="text-button" data-edit-tag="${tag.id}">Edit</button><button class="delete-button" data-delete-tag="${tag.id}">Delete</button></article>`).join("") : '<p class="muted">No tags saved for this trip.</p>'}</section>`;
+    app.insertAdjacentHTML("beforeend", assignmentForm("tag", data, trip));
   } else {
     const types = data.purchaseTypes.filter((type) => type.tripId === trip.id && type.status !== "archived");
     app.innerHTML = `${renderHeader(`${escapeHtml(trip.name)} · Purchase types`, `${back}<button class="button button-primary" data-action="new-purchase-type">Add type</button>`)}<section class="page-section"><h1>Purchase types</h1>${types.length ? types.map((type) => `<article class="management-row"><span><strong>${escapeHtml(type.name)}</strong></span><button class="text-button" data-edit-purchase-type="${type.id}">Edit</button><button class="delete-button" data-delete-purchase-type="${type.id}">Delete</button></article>`).join("") : '<p class="muted">No purchase types saved for this trip.</p>'}</section>`;
@@ -177,6 +186,7 @@ function renderTrip(data, trip) {
   for (const tagId of selectedStore?.tagIds ?? []) selectedTagIds.add(tagId);
   const filtered = tripItems
     .filter((item) => item.name.toLowerCase().includes(state.search.toLowerCase()))
+    .filter((item) => !state.storeId || (item.storeIds ?? []).includes(state.storeId) || (selectedStore?.tagIds ?? []).some((tagId) => (item.tagIds ?? []).includes(tagId)))
     .filter((item) => !selectedTagIds.size || [...selectedTagIds].some((tagId) => (item.tagIds ?? []).includes(tagId)))
     .filter((item) => !state.unfulfilledOnly || !fulfillment(item, data.purchases).complete)
     .sort((left, right) => {
@@ -820,6 +830,26 @@ app.addEventListener("change", (event) => {
   load().then(async (data) => { data.preferences.columns = state.columns; data.preferences.sort = state.sort; data.preferences.sortDirection = state.sortDirection; return fileStore.save(data); }).then(render).catch(reportError);
 });
 dialog.addEventListener("submit", (event) => { event.preventDefault(); saveForm(event.target).catch(reportError); });
+app.addEventListener("submit", async (event) => {
+  const form = event.target;
+  if (!form.matches('[data-form="store-items"], [data-form="tag-items"]')) return;
+  event.preventDefault();
+  try {
+    const data = await load();
+    const formData = new FormData(form);
+    const targetId = formData.get("targetId");
+    const itemIds = new Set(formData.getAll("itemIds"));
+    for (const item of data.items.filter((candidate) => candidate.tripId === state.tripId)) {
+      if (form.dataset.form === "store-items") item.storeIds = item.storeIds ?? [];
+      const ids = form.dataset.form === "store-items" ? item.storeIds : item.tagIds;
+      if (itemIds.has(item.id)) { if (!ids.includes(targetId)) ids.push(targetId); }
+      else { while (ids.includes(targetId)) ids.splice(ids.indexOf(targetId), 1); }
+      item.updatedAt = timestamp();
+    }
+    await fileStore.save(data);
+    render();
+  } catch (error) { reportError(error); }
+});
 dialog.addEventListener("click", (event) => {
   if (event.target.closest('[data-action="cancel-dialog"]')) dialog.close();
 });
