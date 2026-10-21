@@ -699,6 +699,16 @@ app.addEventListener("click", async (event) => {
     } catch (error) { reportError(error); }
   }
 });
+document.addEventListener("toggle", (event) => {
+  const details = event.target;
+  if (!(details instanceof HTMLDetailsElement) || !details.matches(".top-actions") || !details.open) return;
+  const menu = details.querySelector(".top-action-list");
+  const trigger = details.querySelector("summary");
+  if (!menu || !trigger) return;
+  const triggerBox = trigger.getBoundingClientRect();
+  menu.style.top = `${Math.min(triggerBox.bottom + 6, window.innerHeight - menu.offsetHeight - 8)}px`;
+  menu.style.left = `${Math.max(8, Math.min(triggerBox.left, window.innerWidth - menu.offsetWidth - 8))}px`;
+}, true);
 
 let searchTimer;
 let longPressTimer;

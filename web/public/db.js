@@ -131,7 +131,15 @@ export const fileStore = {
     folderPermission = "granted";
     clearPhotoUrlCache();
     dataLoaded = false;
-    await readData();
+    try {
+      await readData();
+    } catch (error) {
+      // Some browsers require a user gesture before accessing a restored handle.
+      folderPermission = "denied";
+      dataLoaded = false;
+      console.warn("Riceball folder restore requires user confirmation", error);
+      return false;
+    }
     return true;
   },
   reconnectFolder: async () => {
